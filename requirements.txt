@@ -1,25 +1,31 @@
-# Python Requirements for Standalone Instrument Controls
-# Optimized for Python 3.13
+# Instrument Control Suite
+#
+# This file lists the Python package dependencies for the project.
+# It supports Python 3.8+ with full compatibility for Python 3.13.
+#
+# For development and production use:
+#   pip install -r requirements.txt
+#
+# For development with additional testing and documentation tools:
+#   pip install -r requirements-dev.txt  # (if you create this later)
 
-# Core dependencies with updated versions for Python 3.13
-numpy>=2.0.0
-pandas>=2.2.0
-matplotlib>=3.8.0
-Pillow>=10.0.0
+# Core dependencies
+numpy>=2.0.0,<3.0.0      # Numerical computing
+pandas>=2.2.0,<3.0.0     # Data manipulation and analysis
+matplotlib>=3.8.0,<4.0.0 # Plotting and visualization
+Pillow>=10.0.0,<11.0.0   # Image processing
 
-# VISA communication
-pyvisa>=1.13.0
-pyvisa-py>=0.7.2
-
-# Optional interfaces
-pyserial>=3.5
-pyusb>=1.2.1
+# Hardware communication
+pyvisa>=1.13.0,<2.0.0    # VISA instrument control
+pyvisa-py>=0.7.2,<1.0.0  # Pure Python VISA backend
+pyserial>=3.5,<4.0.0     # Serial port communication
+pyusb>=1.2.1,<2.0.0      # USB device access
 
 # Web interface
-gradio>=4.0.0
-huggingface_hub>=0.25.2
+gradio>=4.0.0,<5.0.0     # Web UI components
+huggingface_hub>=0.25.2,<1.0.0  # Model and dataset hosting
 
-# Additional dependencies that might be needed for Python 3.13
+# Build and packaging (included for development environments)
 setuptools>=68.0.0
 wheel>=0.40.0
-pip>=25.0.0
+# Note: pip should be managed by the Python environment, not requirements.txt
