@@ -1026,10 +1026,10 @@ class PowerSupplyAutomationGradio:
         # gr.Blocks creates a customizable web interface
         # theme=gr.themes.Soft() gives it a professional appearance
 
-        with gr.Blocks(title="Keithley Power Supply Automation", theme=gr.themes.Soft()) as demo:
+        with gr.Blocks(title="DIGANTARA PSU Control", theme=gr.themes.Soft()) as demo:
 
             # Page title and description
-            gr.Markdown("# Keithley Multi-Channel Power Supply Control")
+            gr.Markdown("# DIGANTARA PSU Control")
             gr.Markdown("Professional automation control for Keithley 2230 power supply")
 
             # ================================================================
@@ -1263,7 +1263,7 @@ def main():
     """
 
     # Display startup banner
-    print("Keithley Power Supply Automation - GRADIO VERSION")
+    print("DIGANTARA PSU Control - GRADIO VERSION")
     print("="*60)
 
     try:
