@@ -195,8 +195,8 @@ import json                 # JSON encoder/decoder (RFC 8259)
 #   │   ├── keysight_oscilloscope.py
 #   │   └── scpi_wrapper.py
 #   └── scripts/
-#       └── keithley/
-#           └── Unified.py (this file)
+#   │   
+#   └── Unified.py (this file)
 #
 # Path resolution breakdown:
 #   __file__              = full path to Unified.py
