@@ -463,5 +463,4 @@ You're now ready to use the Digantara Instrumentation Control Suite!
 ---
 
 **Document Version**: 1.0
-**Last Updated**: November 19, 2025
 **For**: Digantara Instrumentation Control Suite v1.0.0
