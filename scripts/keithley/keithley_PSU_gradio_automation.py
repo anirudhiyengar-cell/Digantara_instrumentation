@@ -1311,9 +1311,9 @@ def main():
         print("Launching web interface...")
 
         # Use network binding so other laptops on the same WiFi can access
-        chosen_port = 7863
+        chosen_port = 7861
         print(f"Opening browser to http://0.0.0.0:{chosen_port}")
-        print("Other laptops on the same WiFi can open: http://[your-computer-ip]:7863")
+        print("Other laptops on the same WiFi can open: http://[your-computer-ip]:7861")
 
         try:
             demo.launch(
