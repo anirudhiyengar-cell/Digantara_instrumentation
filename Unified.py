@@ -1519,7 +1519,7 @@ class PowerSupplyAutomationGradio:
             (5.0, 5.0)  # (5 seconds, 5 volts)
         """
 
-        TYPES = ["Sine", "Square", "Triangle", "Ramp Up", "Ramp Down"]
+        TYPES = ["Sine", "Square", "Triangle", "Ramp Up", "Ramp Down","Cardiac", "Damped Sine", "Exponential Raise", "Exponential Fall", "Gaussian Pulse", "Neural Spike", "Staircase", "PWM", "Chirp", "Burst Mode", "Brownout", "RC Charge", "Sinc", "Breathing"]
 
         def __init__(self, waveform_type: str = "Sine", target_voltage: float = 3.0,
                      cycles: int = 3, points_per_cycle: int = 50, cycle_duration: float = 8.0):
@@ -1699,9 +1699,164 @@ class PowerSupplyAutomationGradio:
                         # Linear decrease: pos = 0 → V = V_peak, pos = 1 → V = 0
                         v = (1.0 - pos) * self.target_voltage
 
+                    elif self.waveform_type == 'Cardiac':
+                        # ----------------------------------------------------------
+                        # Realistic ECG using McSharry et al. (2003) model
+                        # https://doi.org/10.1109/TBME.2003.811554
+                        #
+                        # This model creates highly realistic ECG morphology via
+                        # a nonlinear dynamical system evolving on a limit cycle.
+                        #
+                        # Scaled so R-peak == target_voltage
+                        # ----------------------------------------------------------
+
+                        # Phase angle (0–2π)
+                        theta = pos * 2 * math.pi
+
+                        # Angles of the P,Q,R,S,T waves on the unit circle
+                        theta_p = -0.25 * math.pi
+                        theta_q = -0.05 * math.pi
+                        theta_r =  0.00 * math.pi
+                        theta_s =  0.05 * math.pi
+                        theta_t =  0.30 * math.pi
+
+                        # Amplitudes of waves (relative to R = 1.0)
+                        a_p = 0.12
+                        a_q = -0.20
+                        a_r = 1.00
+                        a_s = -0.25
+                        a_t = 0.35
+
+                        # Widths of each wave (controls sharpness)
+                        b_p = 0.20
+                        b_q = 0.10
+                        b_r = 0.04
+                        b_s = 0.12
+                        b_t = 0.40
+
+                        # Gaussian kernel using angular distances
+                        def wave(a, b, theta_i):
+                            # smallest angular distance on circle
+                            dtheta = (theta - theta_i + math.pi) % (2 * math.pi) - math.pi
+                            return a * math.exp(-0.5 * (dtheta / b) ** 2)
+
+                        # Sum PQRST features
+                        ecg = (
+                            wave(a_p, b_p, theta_p) +
+                            wave(a_q, b_q, theta_q) +
+                            wave(a_r, b_r, theta_r) +
+                            wave(a_s, b_s, theta_s) +
+                            wave(a_t, b_t, theta_t)
+                        )
+
+                        # Scale R-peak to target voltage
+                        v = max(0.0, ecg) * self.target_voltage
+                    elif self.waveform_type == "Damped Sine":
+                        # Damped oscillation: sine * exponential decay
+                        v = math.sin(2 * math.pi * pos) * math.exp(-3 * pos)
+                        v = abs(v) * self.target_voltage
+
+                    elif self.waveform_type == "Exponential Raise":
+                        # Exponential curve: slow start, fast end
+                        v = (math.exp(5 * pos) - 1) / (math.exp(5) - 1)
+                        v *= self.target_voltage
+
+                    elif self.waveform_type == "Exponential Fall":
+                        # Opposite of exponential rise
+                        v = (math.exp(5 * (1 - pos)) - 1) / (math.exp(5) - 1)
+                        v *= self.target_voltage
+
+                    elif self.waveform_type == "Gaussian Pulse":
+                        # Smooth centered pulse
+                        sigma = 0.12
+                        v = math.exp(-((pos - 0.5) ** 2) / (2 * sigma * sigma))
+                        v *= self.target_voltage
+
+                    elif self.waveform_type == "Neural Spike":
+                        # Subthreshold bump
+                        a = 0.2 * math.exp(-((pos - 0.30)**2) / 0.004)
+                        # Main spike
+                        b = 1.0 * math.exp(-((pos - 0.50)**2) / 0.0004)
+                        # Afterhyperpolarization
+                        c = -0.3 * math.exp(-((pos - 0.60)**2) / 0.001)
+                        v = max(0.0, a + b + c) * self.target_voltage
+
+                    elif self.waveform_type == "Staircase":
+                        # Discrete voltage steps - great for ADC testing
+                        # Divides cycle into 8 equal steps
+                        steps = 8
+                        step_index = int(pos * steps)
+                        v = (step_index / (steps - 1)) * self.target_voltage
+
+                    elif self.waveform_type == "PWM":
+                        # Pulse Width Modulation - duty cycle varies linearly
+                        # Frequency: 10 pulses per cycle
+                        freq = 10
+                        pulse_pos = (pos * freq) % 1.0
+                        duty_cycle = pos  # Duty cycle increases from 0% to 100%
+                        v = self.target_voltage if pulse_pos < duty_cycle else 0.0
+
+                    elif self.waveform_type == "Chirp":
+                        # Frequency sweep - starts slow, ends fast
+                        # Instantaneous frequency increases linearly
+                        # f(t) = f0 + k*t, where k is chirp rate
+                        chirp_rate = 5  # Frequency multiplier
+                        phase = 2 * math.pi * (pos + chirp_rate * pos * pos / 2)
+                        v = abs(math.sin(phase)) * self.target_voltage
+
+                    elif self.waveform_type == "Burst Mode":
+                        # On/off bursting - 20% on, 80% off
+                        burst_duty = 0.2
+                        if pos < burst_duty:
+                            # During burst: fast oscillation
+                            burst_freq = 8
+                            v = abs(math.sin(2 * math.pi * burst_freq * pos / burst_duty)) * self.target_voltage
+                        else:
+                            # Off period
+                            v = 0.0
+
+                    elif self.waveform_type == "Brownout":
+                        # Simulates power brownout/sag and recovery
+                        if pos < 0.3:
+                            # Normal voltage
+                            v = self.target_voltage
+                        elif pos < 0.5:
+                            # Voltage sag (exponential decay)
+                            sag_pos = (pos - 0.3) / 0.2
+                            v = self.target_voltage * (0.3 + 0.7 * math.exp(-5 * sag_pos))
+                        elif pos < 0.7:
+                            # Low voltage period
+                            v = self.target_voltage * 0.3
+                        else:
+                            # Recovery (exponential rise)
+                            recovery_pos = (pos - 0.7) / 0.3
+                            v = self.target_voltage * (0.3 + 0.7 * (1 - math.exp(-5 * recovery_pos)))
+
+                    elif self.waveform_type == "RC Charge":
+                        # Classic RC circuit charging curve: V = V_max * (1 - e^(-t/RC))
+                        # Time constant tau = 0.2 (reaches ~99% at pos=1)
+                        tau = 0.2
+                        v = self.target_voltage * (1 - math.exp(-pos / tau))
+
+                    elif self.waveform_type == "Sinc":
+                        # Sinc function: sin(x)/x with oscillating side lobes
+                        # Center at pos=0.5 for symmetry
+                        x = (pos - 0.5) * 10  # Scale to make lobes visible
+                        if abs(x) < 0.01:  # Avoid division by zero at center
+                            sinc_val = 1.0
+                        else:
+                            sinc_val = math.sin(math.pi * x) / (math.pi * x)
+                        # Make non-negative and scale
+                        v = abs(sinc_val) * self.target_voltage
+
+                    elif self.waveform_type == "Breathing":
+                        # Slow, smooth breathing effect (like LED breathing)
+                        # Uses raised cosine for smooth fade in/out
+                        v = self.target_voltage * (1 - math.cos(2 * math.pi * pos)) / 2
+
                     else:
-                        # Fallback for unknown type (should never execute due to __init__ validation)
                         v = 0.0
+
 
                     # ────────────────────────────────────────────────────────
                     # Safety Clamp to Hardware Limits
@@ -4657,7 +4812,7 @@ class UnifiedInstrumentControl:
         # Voltage Waveform Generation
         gr.Markdown("### Voltage Waveform Generation")
         with gr.Group():
-            gr.Markdown("Generate dynamic voltage patterns on selected channel (Sine, Square, Triangle, Ramp)")
+            gr.Markdown("Generate dynamic voltage patterns on selected channel (Sine, Square, Triangle, Ramp, cardiac, Damped Sine, Exponential Raise, Exponential Fall, Gaussian Pulse, Neural Spike).")
 
             with gr.Row():
                 psu_waveform_channel = gr.Dropdown(
@@ -4667,8 +4822,28 @@ class UnifiedInstrumentControl:
                 )
                 psu_waveform_type = gr.Dropdown(
                     label="Waveform Type",
-                    choices=["Sine", "Square", "Triangle", "Ramp Up", "Ramp Down"],
-                    value="Sine"
+                    choices=[
+                        "Sine - ∿ smooth wave",
+                        "Square - ⎍ sharp on/off",
+                        "Triangle - △ linear ramp up/down",
+                        "Ramp Up - ⟋ linear rise",
+                        "Ramp Down - ⟍ linear fall",
+                        "Cardiac - ♥ ECG heartbeat",
+                        "Damped Sine - ∿↘ decaying oscillation",
+                        "Exponential Raise - ⤴ slow→fast rise",
+                        "Exponential Fall - ⤵ fast→slow fall",
+                        "Gaussian Pulse - ⌒ bell curve",
+                        "Neural Spike - ⟰ action potential",
+                        "Staircase - ⎽⎺ discrete steps",
+                        "PWM - ⎍⎍⎍ variable duty cycle",
+                        "Chirp - ∿∿∿ frequency sweep",
+                        "Burst Mode - ⎍⎍___ on/off bursts",
+                        "Brownout - ⎺⤵_ power sag/recovery",
+                        "RC Charge - ⤴⎺ capacitor charging",
+                        "Sinc - ⌒∿∿ main lobe + ripples",
+                        "Breathing - ⬭ smooth fade in/out"
+                    ],
+                    value="Sine - ∿ smooth wave"
                 )
 
             with gr.Row():
@@ -4837,12 +5012,20 @@ class UnifiedInstrumentControl:
                     # ────────────────────────────────────────────────────────────
                     # Format Output String
                     # ────────────────────────────────────────────────────────────
+                    # Calculate estimated end time
+                    from datetime import datetime, timedelta
+                    start_time = datetime.now()
+                    end_time = start_time + timedelta(seconds=estimated_time)
+
+                    start_str = start_time.strftime('%H:%M:%S')
+                    end_str = end_time.strftime('%H:%M:%S')
+
                     if estimated_time < 60:
                         # Short duration: show seconds only
-                        return f"~{estimated_time:.1f}s TOTAL | {total_points} points @ {time_per_point_ms:.0f}ms/point"
+                        return f"Start: {start_str} → End: ~{end_str} | Duration: ~{estimated_time:.1f}s | {total_points} pts @ {time_per_point_ms:.0f}ms/pt"
                     else:
                         # Long duration: show both seconds and minutes
-                        return f"~{estimated_time:.1f}s ({estimated_time/60:.1f} min) TOTAL | {total_points} points @ {time_per_point_ms:.0f}ms/point"
+                        return f"Start: {start_str} → End: ~{end_str} | Duration: ~{estimated_time:.1f}s ({estimated_time/60:.1f} min) | {total_points} pts @ {time_per_point_ms:.0f}ms/pt"
 
                 except Exception as e:
                     # ────────────────────────────────────────────────────────────
@@ -4904,8 +5087,11 @@ class UnifiedInstrumentControl:
                 try:
                     import matplotlib.pyplot as plt
 
+                    # Extract waveform name from dropdown description (e.g., "Sine - ∿ smooth wave" -> "Sine")
+                    waveform_name = waveform_type.split(' - ')[0] if ' - ' in waveform_type else waveform_type
+
                     generator = self.psu_controller._WaveformGenerator(
-                        waveform_type=waveform_type,
+                        waveform_type=waveform_name,
                         target_voltage=target_v,
                         cycles=int(cycles),
                         points_per_cycle=int(points),
@@ -4938,6 +5124,9 @@ class UnifiedInstrumentControl:
                     if not self.psu_controller.is_connected:
                         return "ERROR: Power supply not connected. Please connect first."
 
+                    # Extract waveform name from dropdown description (e.g., "Sine - ∿ smooth wave" -> "Sine")
+                    waveform_name = waveform_type.split(' - ')[0] if ' - ' in waveform_type else waveform_type
+
                     # Validate channel voltage limits
                     if channel == 3 and target_v > 5:
                         return "ERROR: Channel 3 limited to 5V maximum. Please reduce target voltage."
@@ -4946,7 +5135,7 @@ class UnifiedInstrumentControl:
 
                     # Update ramping parameters
                     self.psu_controller.ramping_params.update({
-                        'waveform': waveform_type,
+                        'waveform': waveform_name,
                         'target_voltage': target_v,
                         'cycles': int(cycles),
                         'points_per_cycle': int(points),
@@ -4957,7 +5146,7 @@ class UnifiedInstrumentControl:
 
                     # Generate waveform profile
                     generator = self.psu_controller._WaveformGenerator(
-                        waveform_type=waveform_type,
+                        waveform_type=waveform_name,
                         target_voltage=target_v,
                         cycles=int(cycles),
                         points_per_cycle=int(points),
