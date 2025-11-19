@@ -603,6 +603,5 @@ We hope this documentation helps you successfully use the Digantara Instrumentat
 
 **Document**: Documentation Index
 **Version**: 1.0
-**Last Updated**: November 19, 2025
 **For**: Digantara Instrumentation Control Suite v1.0.0
 **Maintained by**: Digantara Research and Technologies Pvt. Ltd

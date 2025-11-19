@@ -459,7 +459,7 @@ The Statistics tab provides:
 ### Support Contacts
 
 For issues with this software, contact:
-- **Email**: info@digantara.com
+- **Email**: anirudh.iyengar@digantara.co.in
 - **Project Page**: Digantara Research and Technologies
 
 ### Reporting Bugs
@@ -611,7 +611,6 @@ See `requirements.txt` for complete list with versions.
 
 ## Document Version
 
-**Last Updated**: November 19, 2025
 **Document Version**: 1.0
 **For Software Version**: 1.0.0
 
