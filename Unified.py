@@ -5877,6 +5877,7 @@ class UnifiedInstrumentControl:
         """Launch the unified interface."""
         interface = self.create_interface()
         interface.launch(
+            server_name="0.0.0.0",
             share=share,
             server_port=server_port,
             inbrowser=auto_open,

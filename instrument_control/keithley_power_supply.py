@@ -301,6 +301,123 @@ class KeithleyPowerSupply:
             self._logger.warning("Some outputs may still be ON")
         return ok
 
+    def set_voltage(self, channel: int, voltage: float) -> bool:
+        """
+        Set voltage on a specific channel without changing other parameters.
+
+        Args:
+            channel: Channel number (1-max_channels)
+            voltage: Voltage to set in volts
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected:
+            self._logger.error("Cannot set voltage: not connected")
+            return False
+
+        if not (1 <= channel <= self.max_channels):
+            self._logger.error(f"Invalid channel {channel}")
+            return False
+
+        if not (self._valid_voltage_range[0] <= voltage <= self._valid_voltage_range[1]):
+            self._logger.error(f"Voltage {voltage}V out of range {self._valid_voltage_range}")
+            return False
+
+        try:
+            self._instrument.write(f":INSTrument:SELect CH{channel}")
+            time.sleep(0.1)
+            self._instrument.write(f":SOURce:VOLTage {voltage}")
+            time.sleep(self._voltage_settling_time)
+            self._logger.debug(f"CH{channel} voltage set to {voltage}V")
+            return True
+        except Exception as e:
+            self._logger.error(f"Failed to set voltage on channel {channel}: {e}")
+            return False
+
+    def measure_voltage(self, channel: int) -> Optional[float]:
+        """
+        Measure voltage on a specific channel.
+
+        Args:
+            channel: Channel number (1-max_channels)
+
+        Returns:
+            Measured voltage in volts, or None if measurement fails
+        """
+        if not self.is_connected:
+            self._logger.error("Cannot measure voltage: not connected")
+            return None
+
+        if not (1 <= channel <= self.max_channels):
+            self._logger.error(f"Invalid channel {channel}")
+            return None
+
+        try:
+            self._instrument.write(f":INSTrument:SELect CH{channel}")
+            time.sleep(0.1)
+            voltage_str = self._instrument.query(":MEASure:VOLTage?").strip()
+
+            # Parse numeric value from response
+            matches = re.findall(r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?', voltage_str)
+            if matches:
+                voltage = float(matches[0])
+                self._logger.debug(f"CH{channel} measured voltage: {voltage}V")
+                return voltage
+            else:
+                self._logger.warning(f"Could not parse voltage from '{voltage_str}'")
+                return 0.0
+        except Exception as e:
+            self._logger.error(f"Failed to measure voltage on channel {channel}: {e}")
+            return None
+
+    def measure_current(self, channel: int) -> Optional[float]:
+        """
+        Measure current on a specific channel.
+
+        Args:
+            channel: Channel number (1-max_channels)
+
+        Returns:
+            Measured current in amps, or None if measurement fails
+        """
+        if not self.is_connected:
+            self._logger.error("Cannot measure current: not connected")
+            return None
+
+        if not (1 <= channel <= self.max_channels):
+            self._logger.error(f"Invalid channel {channel}")
+            return None
+
+        try:
+            self._instrument.write(f":INSTrument:SELect CH{channel}")
+            time.sleep(0.1)
+            current_str = self._instrument.query(":MEASure:CURRent?").strip()
+
+            # Parse numeric value from response
+            matches = re.findall(r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?', current_str)
+            if matches:
+                current = float(matches[0])
+
+                # Check if output is OFF and sanitize current reading
+                try:
+                    state_str = self._instrument.query(":OUTPut?").strip()
+                    if state_str in ['0', 'OFF', 'off']:
+                        if abs(current) > 0.001:
+                            self._logger.debug(f"Output OFF but current={current}A, forcing to 0")
+                            current = 0.0
+                except Exception:
+                    pass
+
+                self._logger.debug(f"CH{channel} measured current: {current}A")
+                return current
+            else:
+                self._logger.warning(f"Could not parse current from '{current_str}'")
+                return 0.0
+        except Exception as e:
+            self._logger.error(f"Failed to measure current on channel {channel}: {e}")
+            return None
+
     def measure_channel_output(self, channel: int) -> Optional[Tuple[float, float]]:
         """
         ABSOLUTE FINAL: Improved parsing and buffer management
@@ -331,12 +448,12 @@ class KeithleyPowerSupply:
 
             # Select channel
             self._instrument.write(f":INSTrument:SELect CH{channel}")
-            time.sleep(0.5)
+            time.sleep(0.05)  # Reduced from 0.5s to 0.05s
 
             # Measure voltage
             voltage_str = self._instrument.query(":MEASure:VOLTage?").strip()
             self._logger.info(f"Raw voltage response: '{voltage_str}'")
-            time.sleep(0.5)
+            time.sleep(0.05)  # Reduced from 0.5s to 0.05s
 
             # Measure current
             current_str = self._instrument.query(":MEASure:CURRent?").strip()

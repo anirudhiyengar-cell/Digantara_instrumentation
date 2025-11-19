@@ -1181,7 +1181,8 @@ class GradioOscilloscopeGUI:
                 
                 # Launch with blocking=True to keep the process alive
                 self._gradio_interface.launch(
-                    share=share, 
+                    server_name="0.0.0.0",
+                    share=share,
                     server_port=current_port,
                     inbrowser=auto_open if attempt == 0 else False,  # Only try to open browser on first attempt
                     prevent_thread_lock=False,
@@ -1234,10 +1235,10 @@ def main():
     
     app = None
     try:
-        # Try a higher port range to avoid conflicts
-        start_port = 7000
+        # Use port 7863 for oscilloscope control
+        start_port = 7863
         max_attempts = 10
-        
+
         print(f"Looking for an available port starting from {start_port}...")
         
         for port in range(start_port, start_port + max_attempts):

@@ -719,9 +719,9 @@ if __name__ == "__main__":
     interface = create_dmm_interface()
     interface.launch(
         server_name="0.0.0.0",
-        server_port=8000,
+        server_port=7862,
         share=False,
         debug=True,
         show_error=True,
-        inbrowser=True 
+        #inbrowser=True
     )

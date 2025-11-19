@@ -3603,11 +3603,13 @@ class GradioOscilloscopeGUI:
 
                 self._gradio_interface.launch(
 
+                    server_name="0.0.0.0",
+
                     share=share,
 
                     server_port=current_port,
 
-                    inbrowser=auto_open if attempt == 0 else False,
+                    #inbrowser=auto_open if attempt == 0 else False,
 
                     prevent_thread_lock=False,
 
@@ -3671,7 +3673,7 @@ def main():
 
     try:
 
-        start_port = 7000
+        start_port = 7864
 
         max_attempts = 10
 
