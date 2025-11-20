@@ -25,9 +25,6 @@ pyusb>=1.2.1,<2.0.0      # USB device access
 gradio>=4.0.0,<5.0.0     # Web UI components
 huggingface_hub>=0.25.2,<1.0.0  # Model and dataset hosting
 
-# Configuration and environment
-python-dotenv>=1.0.0,<2.0.0  # Environment variable management
-
 # Build and packaging (included for development environments)
 setuptools>=68.0.0
 wheel>=0.40.0
