@@ -442,7 +442,85 @@ class DMM_GUI_Controller:
             'auto_zero': True,                  # Enable auto-zero for drift compensation
             'measurement_interval': 1.0         # 1 second between continuous measurements
         }
-    
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # Range Configuration Methods
+    # ════════════════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def get_range_options(measurement_function: str) -> Tuple[list, float]:
+        """
+        Get appropriate range options based on measurement function.
+
+        Returns measurement-specific range values including auto-range option.
+        Different measurement types have different valid ranges and capabilities.
+
+        Args:
+            measurement_function: Measurement type string (e.g., "DC_VOLTAGE", "CAPACITANCE")
+
+        Returns:
+            Tuple containing:
+                - List of range values (floats) with "AUTO" as first option where applicable
+                - Default range value (float)
+
+        Range Specifications:
+            DC/AC Voltage: AUTO, 0.1V, 1V, 10V, 100V, 1000V
+            DC/AC Current: AUTO, 0.01A, 0.1A, 1A, 3A
+            Resistance (2W/4W): AUTO, 10Ω, 100Ω, 1kΩ, 10kΩ, 100kΩ, 1MΩ, 10MΩ, 100MΩ
+            Capacitance: 1nF, 10nF, 100nF, 1µF, 10µF, 100µF, 1mF, 10mF (no auto)
+            Frequency: AUTO, 3Hz, 30Hz, 300Hz, 3kHz, 30kHz, 300kHz
+            Temperature: AUTO (single option, sensor-dependent)
+
+        Example:
+            >>> ranges, default = DMM_GUI_Controller.get_range_options("DC_VOLTAGE")
+            >>> print(ranges)  # ["AUTO", 0.1, 1, 10, 100, 1000]
+            >>> print(default)  # 10.0
+        """
+        # Range configurations for each measurement type
+        # Format: measurement_type: ([list of ranges], default_value)
+        range_configs = {
+            'DC_VOLTAGE': (
+                ["AUTO", 0.1, 1, 10, 100, 1000],  # Volts
+                10.0  # Default: 10V range
+            ),
+            'AC_VOLTAGE': (
+                ["AUTO", 0.1, 1, 10, 100, 1000],  # Volts RMS
+                10.0  # Default: 10V range
+            ),
+            'DC_CURRENT': (
+                ["AUTO", 0.01, 0.1, 1, 3],  # Amperes
+                1.0  # Default: 1A range
+            ),
+            'AC_CURRENT': (
+                ["AUTO", 0.01, 0.1, 1, 3],  # Amperes RMS
+                1.0  # Default: 1A range
+            ),
+            'RESISTANCE_2W': (
+                ["AUTO", 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6],  # Ohms
+                1e3  # Default: 1kΩ range
+            ),
+            'RESISTANCE_4W': (
+                ["AUTO", 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6],  # Ohms
+                1e3  # Default: 1kΩ range
+            ),
+            'CAPACITANCE': (
+                # No auto-range for capacitance measurements
+                [1e-9, 10e-9, 100e-9, 1e-6, 10e-6, 100e-6, 1e-3, 10e-3],  # Farads
+                1e-6  # Default: 1µF range
+            ),
+            'FREQUENCY': (
+                ["AUTO", 3, 30, 300, 3e3, 30e3, 300e3],  # Hertz
+                1000  # Default: 1kHz range
+            ),
+            'TEMPERATURE': (
+                ["AUTO"],  # Only auto-range, sensor-dependent
+                0  # Default: auto (0 = auto for driver)
+            )
+        }
+
+        # Return configuration for requested function, or default to DC_VOLTAGE
+        return range_configs.get(measurement_function, range_configs['DC_VOLTAGE'])
+
     # ════════════════════════════════════════════════════════════════════════════
     # Connection Management Methods
     # ════════════════════════════════════════════════════════════════════════════
@@ -5133,12 +5211,14 @@ class UnifiedInstrumentControl:
                     ],
                     value="DC_VOLTAGE"
                 )
-                
-                dmm_measurement_range = gr.Number(
-                    label="Range",
-                    value=10.0,
-                    minimum=0.001,
-                    maximum=1000.0
+
+                # Get default range options for DC_VOLTAGE
+                default_ranges, default_value = self.dmm_controller.get_range_options("DC_VOLTAGE")
+
+                dmm_measurement_range = gr.Dropdown(
+                    label="Range (AUTO or specific value)",
+                    choices=default_ranges,
+                    value=default_value
                 )
                 
                 dmm_resolution = gr.Number(
@@ -5167,7 +5247,7 @@ class UnifiedInstrumentControl:
             with gr.Column(scale=1):
                 gr.Markdown("### Measurement Results")
                 dmm_current_measurement = gr.Textbox(
-                    label="Current Reading",
+                    label="Reading",
                     interactive=False,
                     lines=2
                 )
@@ -5200,7 +5280,7 @@ class UnifiedInstrumentControl:
                 gr.Markdown("### Statistical Analysis")
                 dmm_stats_points = gr.Number(
                     label="Number of Points",
-                    value=100,
+                    value=7000,
                     minimum=1,
                     maximum=65000
                 )
@@ -5217,7 +5297,7 @@ class UnifiedInstrumentControl:
                 gr.Markdown("### Trend Plot")
                 dmm_plot_points = gr.Number(
                     label="Points to Plot",
-                    value=100,
+                    value=7000,
                     minimum=10,
                     maximum=65000
                 )
@@ -5274,7 +5354,37 @@ class UnifiedInstrumentControl:
 
                 dmm_refresh_preview_btn = gr.Button("Refresh Preview")
         
+        # Helper function to update range options when measurement function changes
+        def update_range_dropdown(measurement_function: str):
+            """Update range dropdown choices and value based on selected measurement function."""
+            ranges, default = self.dmm_controller.get_range_options(measurement_function)
+            return gr.Dropdown(choices=ranges, value=default)
+
+        # Helper function to convert AUTO to 0 for driver compatibility
+        def single_measurement_wrapper(function: str, range_val, resolution: float,
+                                       nplc: float, auto_zero: bool):
+            """Wrapper to convert 'AUTO' string to 0 for driver."""
+            # Convert "AUTO" string to 0 (auto-range value for driver)
+            if range_val == "AUTO":
+                range_val = 0
+            return self.dmm_controller.single_measurement(function, range_val, resolution, nplc, auto_zero)
+
+        def continuous_measurement_wrapper(function: str, range_val, resolution: float,
+                                          nplc: float, auto_zero: bool, interval: float):
+            """Wrapper to convert 'AUTO' string to 0 for driver."""
+            # Convert "AUTO" string to 0 (auto-range value for driver)
+            if range_val == "AUTO":
+                range_val = 0
+            return self.dmm_controller.start_continuous_measurement(function, range_val, resolution, nplc, auto_zero, interval)
+
         # Event handlers
+        # Update range dropdown when measurement function changes
+        dmm_measurement_function.change(
+            fn=update_range_dropdown,
+            inputs=[dmm_measurement_function],
+            outputs=[dmm_measurement_range]
+        )
+
         dmm_connect_btn.click(
             self.dmm_controller.connect_instrument,
             inputs=[dmm_visa_address, dmm_timeout_ms],
@@ -5292,13 +5402,13 @@ class UnifiedInstrumentControl:
         )
         
         dmm_single_measure_btn.click(
-            self.dmm_controller.single_measurement,
+            single_measurement_wrapper,
             inputs=[dmm_measurement_function, dmm_measurement_range, dmm_resolution, dmm_nplc, dmm_auto_zero],
             outputs=[dmm_current_measurement, dmm_measurement_status]
         )
-        
+
         dmm_start_continuous_btn.click(
-            self.dmm_controller.start_continuous_measurement,
+            continuous_measurement_wrapper,
             inputs=[dmm_measurement_function, dmm_measurement_range, dmm_resolution, dmm_nplc, dmm_auto_zero, dmm_measurement_interval],
             outputs=[dmm_continuous_status]
         )
@@ -5374,7 +5484,7 @@ class UnifiedInstrumentControl:
         
         def update_data_preview():
             if self.dmm_controller.measurement_data:
-                recent_data = self.dmm_controller.measurement_data[-20:]  # Show last 20 points
+                recent_data = self.dmm_controller.measurement_data[-200:]  # Show last 200 points
                 df_data = []
                 for point in recent_data:
                     df_data.append([
@@ -5567,108 +5677,108 @@ class UnifiedInstrumentControl:
             )
             psu_clear_btn.click(fn=self.psu_controller.clear_measurement_data)
 
-        # ════════════════════════════════════════════════════════════════════════════
-        # LIVE MONITOR - Real-time graphs for PSU channels
-        # ════════════════════════════════════════════════════════════════════════════
-        gr.Markdown("### Live Monitor")
-        gr.Markdown("Real-time voltage, current, and power monitoring with live updating graphs")
+        # # ════════════════════════════════════════════════════════════════════════════
+        # # LIVE MONITOR - Real-time graphs for PSU channels
+        # # ════════════════════════════════════════════════════════════════════════════
+        # gr.Markdown("### Live Monitor")
+        # gr.Markdown("Real-time voltage, current, and power monitoring with live updating graphs")
 
-        with gr.Group():
-            with gr.Row():
-                psu_live_ch1_cb = gr.Checkbox(label="Monitor CH1", value=True)
-                psu_live_ch2_cb = gr.Checkbox(label="Monitor CH2", value=False)
-                psu_live_ch3_cb = gr.Checkbox(label="Monitor CH3", value=False)
-                psu_live_interval = gr.Slider(0.5, 10.0, value=1.0, label="Update Interval (s)", step=0.5)
+        # with gr.Group():
+        #     with gr.Row():
+        #         psu_live_ch1_cb = gr.Checkbox(label="Monitor CH1", value=True)
+        #         psu_live_ch2_cb = gr.Checkbox(label="Monitor CH2", value=False)
+        #         psu_live_ch3_cb = gr.Checkbox(label="Monitor CH3", value=False)
+        #         psu_live_interval = gr.Slider(0.5, 10.0, value=1.0, label="Update Interval (s)", step=0.5)
 
-            with gr.Row():
-                psu_start_live_btn = gr.Button("Start Live Monitor", variant="primary", size="lg")
-                psu_stop_live_btn = gr.Button("Stop Live Monitor", variant="stop", size="lg")
-                psu_clear_live_btn = gr.Button("Clear Live Data", variant="secondary")
+        #     with gr.Row():
+        #         psu_start_live_btn = gr.Button("Start Live Monitor", variant="primary", size="lg")
+        #         psu_stop_live_btn = gr.Button("Stop Live Monitor", variant="stop", size="lg")
+        #         psu_clear_live_btn = gr.Button("Clear Live Data", variant="secondary")
 
-            psu_live_status = gr.Textbox(label="Live Monitor Status", value="Stopped", interactive=False)
+        #     psu_live_status = gr.Textbox(label="Live Monitor Status", value="Stopped", interactive=False)
 
-            with gr.Row():
-                psu_plot_type = gr.Dropdown(
-                    choices=["voltage", "current", "power"],
-                    value="voltage",
-                    label="Plot Type"
-                )
-                psu_refresh_plot_btn = gr.Button("Refresh Plot", variant="secondary")
+        #     with gr.Row():
+        #         psu_plot_type = gr.Dropdown(
+        #             choices=["voltage", "current", "power"],
+        #             value="voltage",
+        #             label="Plot Type"
+        #         )
+        #         psu_refresh_plot_btn = gr.Button("Refresh Plot", variant="secondary")
 
-            psu_live_plot = gr.Plot(label="Live Trend Plot")
+        #     psu_live_plot = gr.Plot(label="Live Trend Plot")
 
-            gr.Markdown("#### Live Statistics")
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("**CH1**")
-                    psu_ch1_count = gr.Textbox(label="Samples", value="0", interactive=False)
-                    psu_ch1_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
-                    psu_ch1_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
-                    psu_ch1_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
-                with gr.Column():
-                    gr.Markdown("**CH2**")
-                    psu_ch2_count = gr.Textbox(label="Samples", value="0", interactive=False)
-                    psu_ch2_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
-                    psu_ch2_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
-                    psu_ch2_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
-                with gr.Column():
-                    gr.Markdown("**CH3**")
-                    psu_ch3_count = gr.Textbox(label="Samples", value="0", interactive=False)
-                    psu_ch3_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
-                    psu_ch3_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
-                    psu_ch3_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
+        #     gr.Markdown("#### Live Statistics")
+        #     with gr.Row():
+        #         with gr.Column():
+        #             gr.Markdown("**CH1**")
+        #             psu_ch1_count = gr.Textbox(label="Samples", value="0", interactive=False)
+        #             psu_ch1_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
+        #             psu_ch1_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
+        #             psu_ch1_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
+        #         with gr.Column():
+        #             gr.Markdown("**CH2**")
+        #             psu_ch2_count = gr.Textbox(label="Samples", value="0", interactive=False)
+        #             psu_ch2_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
+        #             psu_ch2_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
+        #             psu_ch2_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
+        #         with gr.Column():
+        #             gr.Markdown("**CH3**")
+        #             psu_ch3_count = gr.Textbox(label="Samples", value="0", interactive=False)
+        #             psu_ch3_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
+        #             psu_ch3_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
+        #             psu_ch3_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
 
-            # Live monitor handlers
-            def psu_handle_start_live(ch1, ch2, ch3, interval):
-                channels = []
-                if ch1:
-                    channels.append(1)
-                if ch2:
-                    channels.append(2)
-                if ch3:
-                    channels.append(3)
-                return self.psu_controller.start_live_measurement(channels, interval)
+        #     # Live monitor handlers
+        #     def psu_handle_start_live(ch1, ch2, ch3, interval):
+        #         channels = []
+        #         if ch1:
+        #             channels.append(1)
+        #         if ch2:
+        #             channels.append(2)
+        #         if ch3:
+        #             channels.append(3)
+        #         return self.psu_controller.start_live_measurement(channels, interval)
 
-            def psu_handle_stop_live():
-                return self.psu_controller.stop_live_measurement()
+        #     def psu_handle_stop_live():
+        #         return self.psu_controller.stop_live_measurement()
 
-            def psu_handle_clear_live():
-                return self.psu_controller.clear_live_data()
+        #     def psu_handle_clear_live():
+        #         return self.psu_controller.clear_live_data()
 
-            def psu_handle_refresh_plot(plot_type):
-                fig = self.psu_controller.create_live_plot(plot_type)
-                s1 = self.psu_controller.get_live_statistics(1)
-                s2 = self.psu_controller.get_live_statistics(2)
-                s3 = self.psu_controller.get_live_statistics(3)
-                return (fig,
-                        s1[0], s1[1], s1[2], s1[3],
-                        s2[0], s2[1], s2[2], s2[3],
-                        s3[0], s3[1], s3[2], s3[3])
+        #     def psu_handle_refresh_plot(plot_type):
+        #         fig = self.psu_controller.create_live_plot(plot_type)
+        #         s1 = self.psu_controller.get_live_statistics(1)
+        #         s2 = self.psu_controller.get_live_statistics(2)
+        #         s3 = self.psu_controller.get_live_statistics(3)
+        #         return (fig,
+        #                 s1[0], s1[1], s1[2], s1[3],
+        #                 s2[0], s2[1], s2[2], s2[3],
+        #                 s3[0], s3[1], s3[2], s3[3])
 
-            psu_start_live_btn.click(
-                fn=psu_handle_start_live,
-                inputs=[psu_live_ch1_cb, psu_live_ch2_cb, psu_live_ch3_cb, psu_live_interval],
-                outputs=[psu_live_status]
-            )
+        #     psu_start_live_btn.click(
+        #         fn=psu_handle_start_live,
+        #         inputs=[psu_live_ch1_cb, psu_live_ch2_cb, psu_live_ch3_cb, psu_live_interval],
+        #         outputs=[psu_live_status]
+        #     )
 
-            psu_stop_live_btn.click(
-                fn=psu_handle_stop_live,
-                outputs=[psu_live_status]
-            )
+        #     psu_stop_live_btn.click(
+        #         fn=psu_handle_stop_live,
+        #         outputs=[psu_live_status]
+        #     )
 
-            psu_clear_live_btn.click(
-                fn=psu_handle_clear_live,
-                outputs=[psu_live_status]
-            )
+        #     psu_clear_live_btn.click(
+        #         fn=psu_handle_clear_live,
+        #         outputs=[psu_live_status]
+        #     )
 
-            psu_refresh_plot_btn.click(
-                fn=psu_handle_refresh_plot,
-                inputs=[psu_plot_type],
-                outputs=[psu_live_plot,
-                         psu_ch1_count, psu_ch1_avg_v, psu_ch1_avg_i, psu_ch1_avg_p,
-                         psu_ch2_count, psu_ch2_avg_v, psu_ch2_avg_i, psu_ch2_avg_p,
-                         psu_ch3_count, psu_ch3_avg_v, psu_ch3_avg_i, psu_ch3_avg_p]
-            )
+        #     psu_refresh_plot_btn.click(
+        #         fn=psu_handle_refresh_plot,
+        #         inputs=[psu_plot_type],
+        #         outputs=[psu_live_plot,
+        #                  psu_ch1_count, psu_ch1_avg_v, psu_ch1_avg_i, psu_ch1_avg_p,
+        #                  psu_ch2_count, psu_ch2_avg_v, psu_ch2_avg_i, psu_ch2_avg_p,
+        #                  psu_ch3_count, psu_ch3_avg_v, psu_ch3_avg_i, psu_ch3_avg_p]
+        #     )
 
         # ════════════════════════════════════════════════════════════════════════════
         # MULTI-CHANNEL SIMULTANEOUS WAVEFORM GENERATOR (Replaces single-channel)
