@@ -2082,7 +2082,7 @@ class PowerSupplyAutomationGradio:
                 ax.grid(True, ls='--', alpha=0.4)
                 ax.legend()
                 plt.tight_layout()
-                plt.savefig(fn, dpi=200)
+                plt.savefig(fn, dpi=1200)
                 plt.close(fig)
                 
             except Exception:
@@ -5937,7 +5937,7 @@ class UnifiedInstrumentControl:
                         psu_ch1_current = gr.Slider(0.001, 3.0, value=0.1, label="Current Limit (A)", step=0.001)
                     with gr.Row():
                         psu_ch1_cycles = gr.Number(value=3, label="Cycles", minimum=1, maximum=100, precision=0)
-                        psu_ch1_points = gr.Number(value=50, label="Points/Cycle", minimum=1, maximum=200, precision=0)
+                        psu_ch1_points = gr.Number(value=50, label="Points/Cycle", minimum=1, maximum=1000, precision=0)
                         psu_ch1_duration = gr.Number(value=8.0, label="Cycle Duration (s)", minimum=0.1, maximum=60)
 
                 # Channel 2 Waveform Configuration
@@ -5953,7 +5953,7 @@ class UnifiedInstrumentControl:
                         psu_ch2_current = gr.Slider(0.001, 3.0, value=0.1, label="Current Limit (A)", step=0.001)
                     with gr.Row():
                         psu_ch2_cycles = gr.Number(value=3, label="Cycles", minimum=1, maximum=100, precision=0)
-                        psu_ch2_points = gr.Number(value=50, label="Points/Cycle", minimum=1, maximum=200, precision=0)
+                        psu_ch2_points = gr.Number(value=50, label="Points/Cycle", minimum=1, maximum=1000, precision=0)
                         psu_ch2_duration = gr.Number(value=8.0, label="Cycle Duration (s)", minimum=0.1, maximum=60)
 
                 # Channel 3 Waveform Configuration (limited to 5V)
@@ -5970,7 +5970,7 @@ class UnifiedInstrumentControl:
                         psu_ch3_current = gr.Slider(0.001, 3.0, value=0.1, label="Current Limit (A)", step=0.001)
                     with gr.Row():
                         psu_ch3_cycles = gr.Number(value=3, label="Cycles", minimum=1, maximum=100, precision=0)
-                        psu_ch3_points = gr.Number(value=50, label="Points/Cycle", minimum=1, maximum=200, precision=0)
+                        psu_ch3_points = gr.Number(value=50, label="Points/Cycle", minimum=1, maximum=1000, precision=0)
                         psu_ch3_duration = gr.Number(value=8.0, label="Cycle Duration (s)", minimum=0.1, maximum=60)
 
             # Global settings
