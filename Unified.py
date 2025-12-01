@@ -47,7 +47,7 @@
 ║              │                                                                ║
 ║              ▼                                                                ║
 ║    ┌────────────────────────────────────────────────────────┐                 ║
-║    │ PyVISA Communication Layer (Thread-Safe)               │                 ║
+║    │ PyVISA Communication Layer (Thread-Safe)               │                ║
 ║    │  ├─ KeithleyDMM6500 Driver                             │                 ║
 ║    │  ├─ KeithleyPowerSupply Driver                         │                 ║
 ║    │  └─ KeysightDSOX6004A Driver                           │                 ║
@@ -91,6 +91,24 @@
 ║  CHANGE LOG:                                                                  ║
 ║    2025-11-18: Fixed waveform duration estimation to include VISA overhead    ║
 ║               Added INSTRUMENT_OVERHEAD_PER_POINT constant (~1.95s)           ║
+║                                                                               ║
+║  ═══════════════════════════════════════════════════════════════════════════  ║
+║  QUICK CUSTOMIZATION GUIDE (For Non-Coders)                                   ║
+║  ═══════════════════════════════════════════════════════════════════════════  ║
+║  Want to customize the appearance? Look for these sections in the code:       ║
+║                                                                               ║
+║  1. CSS STYLING (Line ~5118):                                                 ║
+║     • Change "20px" to "30px" for more spacing                                ║
+║     • Change "#9c9cff" to "#4169E1" for royal blue color                      ║
+║     • Change "100%" to "90%" to make interface narrower                       ║
+║                                                                               ║
+║  2. INTERFACE CONFIGURATION (Line ~5201):                                     ║
+║     • Change primary_hue="indigo" to primary_hue="purple"                     ║
+║     • Change spacing_size="sm" to spacing_size="md" for more space            ║
+║     • Change text_size="sm" to text_size="md" for bigger text                 ║
+║                                                                               ║
+║  All customization options are fully annotated with examples!                 ║
+║  ═══════════════════════════════════════════════════════════════════════════  ║
 ║                                                                               ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 """
@@ -5114,17 +5132,80 @@ class UnifiedInstrumentControl:
         self.dmm_controller = DMM_GUI_Controller()
         self.psu_controller = PowerSupplyAutomationGradio()
         self.oscilloscope_controller = GradioOscilloscopeGUI()
-        
+
+        # ═══════════════════════════════════════════════════════════════════
+        # CSS STYLING - CONTROLS THE APPEARANCE OF THE WEB INTERFACE
+        # ═══════════════════════════════════════════════════════════════════
+        # You can edit these values to customize the look and feel
+        # Numbers can be changed (e.g., 20px to 30px for more spacing)
+        # Colors are in hex format (e.g., #9c9cff is light purple)
+        # ═══════════════════════════════════════════════════════════════════
+
         self._css = """
+        /* ============================================================
+           MAIN CONTAINER - Controls the entire interface width/height
+           ============================================================ */
+        .gradio-container {
+            max-width: 100% !important;      /* Makes interface full width (100% = entire screen) */
+            padding: 20px !important;        /* Space around the edges (change 20px to adjust) */
+            margin: 100 !important;            /* No extra margins (keep at 0) */
+            min-height: 100vh;               /* Full screen height (100vh = entire screen height) */
+        }
+
+        /* ============================================================
+           CONTENT CONTAINER - Inner content area
+           ============================================================ */
+        .container {
+            max-width: 100% !important;      /* Inner content full width (100% = fills parent) */
+            padding: 0 10px !important;      /* Small left/right padding (change 10px to adjust) */
+            margin: 0 !important;            /* No margins (keep at 0) */
+        }
+
+        /* ============================================================
+           MAIN COMPONENT - Root component sizing
+           ============================================================ */
+        #component-0 {
+            min-height: 100vh;               /* Minimum full screen height */
+        }
+
+        /* ============================================================
+           TAB CONTENT - Each instrument tab (DMM, PSU, Oscilloscope)
+           ============================================================ */
+        .tab {
+            padding: 0 10px;                 /* Space inside tabs (change 10px for more/less padding) */
+            min-height: calc(100vh - 120px); /* Tab height (120px reserved for header/footer) */
+        }
+
+        /* ============================================================
+           PANELS - Individual sections within tabs
+           ============================================================ */
+        .panel {
+            margin: 5px 0;                   /* Space between panels (change 5px to adjust spacing) */
+        }
+
+        /* ============================================================
+           TAB NAVIGATION - The tab buttons at the top
+           ============================================================ */
         .tab-nav {
-            border-bottom: 2px solid #9c9cff;
-            margin-bottom: 12px;
+            border-bottom: 2px solid #9c9cff;  /* Bottom border (2px thickness, #9c9cff = light purple) */
+            margin-bottom: 12px;               /* Space below tab buttons (change 12px to adjust) */
         }
-        
+
+        /* ============================================================
+           SELECTED TAB - The currently active tab appearance
+           ============================================================ */
         .tab-selected {
-            background-color: #e0e0ff;
-            font-weight: 600;
+            background-color: #e0e0ff;       /* Background color when tab is selected (#e0e0ff = pale purple) */
+            font-weight: 600;                /* Text boldness (600 = semi-bold, try 400=normal, 700=bold) */
         }
+
+        /* ============================================================
+           CUSTOMIZATION TIPS:
+           - To change colors: Use hex codes like #9c9cff (Google "color picker" to find codes)
+           - To adjust spacing: Change pixel values (e.g., 20px to 30px for more space)
+           - To make interface narrower: Change max-width to 90% or 80%
+           - To add more vertical space: Increase padding values
+           ============================================================ */
         """
         
     def setup_logging(self):
@@ -5137,9 +5218,41 @@ class UnifiedInstrumentControl:
         
     def create_interface(self):
         """Create the unified Gradio interface with tabs for each instrument."""
-        with gr.Blocks(title="DIGANTARA Unified Instrument Control", 
-                      theme=gr.themes.Soft(primary_hue="indigo"), 
-                      css=self._css) as interface:
+        # ═══════════════════════════════════════════════════════════════════
+        # GRADIO INTERFACE CONFIGURATION
+        # ═══════════════════════════════════════════════════════════════════
+        # EASY CUSTOMIZATION GUIDE (no coding knowledge needed):
+        #
+        # title: Change the browser tab name
+        #   Example: "My Lab Control" or "Test Equipment Interface"
+        #
+        # primary_hue: Main color scheme
+        #   Options: "indigo", "blue", "purple", "green", "red", "orange"
+        #   Try: "purple" for purple theme, "blue" for blue theme
+        #
+        # spacing_size: Space between elements
+        #   Options: "sm" (small), "md" (medium), "lg" (large)
+        #   Try: "md" for more spacing, "lg" for even more
+        #
+        # radius_size: Corner roundness of buttons/boxes
+        #   Options: "sm" (sharp), "md" (medium), "lg" (very round)
+        #   Try: "none" for square corners, "lg" for round corners
+        #
+        # text_size: Size of all text
+        #   Options: "sm" (small), "md" (medium), "lg" (large)
+        #   Try: "md" for bigger text, "lg" for even bigger
+        # ═══════════════════════════════════════════════════════════════════
+
+        with gr.Blocks(
+            title="DIGANTARA Unified Instrument Control",  # Browser tab title
+            theme=gr.themes.Soft(
+                primary_hue="indigo",     # Color: indigo, blue, purple, green, red, orange
+                spacing_size="sm",        # Spacing: sm, md, lg
+                radius_size="sm",         # Corner roundness: none, sm, md, lg
+                text_size="sm"            # Text size: sm, md, lg
+            ),
+            css=self._css  # Apply the custom CSS styles defined above
+        ) as interface:
             gr.Markdown("# DIGANTARA Unified Lab Instrument Control")
             gr.Markdown("**Developed by: Anirudh Iyengar** | Digantara Research and Technologies Pvt. Ltd.")
             gr.Markdown("Professional control interface for multiple lab instruments")
