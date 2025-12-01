@@ -9,6 +9,8 @@
 A comprehensive web-based automation framework providing unified control of precision laboratory test equipment through an intuitive browser interface. Designed for electronics testing, hardware validation, and research and development workflows.
 
 **Developed by:** Anirudh Iyengar
+
+
 **Organization:** Digantara Research and Technologies Pvt. Ltd.
 
 ---
