@@ -5187,7 +5187,7 @@ class UnifiedInstrumentControl:
            TAB NAVIGATION - The tab buttons at the top
            ============================================================ */
         .tab-nav {
-            border-bottom: 2px solid #9c9cff;  /* Bottom border (2px thickness, #9c9cff = light purple) */
+            border-bottom: 2px solid #c034eb;  /* Bottom border (2px thickness, #c034eb = purple) */
             margin-bottom: 12px;               /* Space below tab buttons (change 12px to adjust) */
         }
 
@@ -5246,7 +5246,7 @@ class UnifiedInstrumentControl:
         with gr.Blocks(
             title="DIGANTARA Unified Instrument Control",  # Browser tab title
             theme=gr.themes.Soft(
-                primary_hue="indigo",     # Color: indigo, blue, purple, green, red, orange
+                primary_hue="purple",     # Color: indigo, blue, purple, green, red, orange
                 spacing_size="sm",        # Spacing: sm, md, lg
                 radius_size="sm",         # Corner roundness: none, sm, md, lg
                 text_size="sm"            # Text size: sm, md, lg
