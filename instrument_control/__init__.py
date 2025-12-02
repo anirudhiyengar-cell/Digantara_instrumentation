@@ -20,6 +20,7 @@ __description__ = "Professional-grade instrument control library for laboratory 
 from .keithley_power_supply import KeithleyPowerSupply, KeithleyPowerSupplyError
 from .keithley_dmm import KeithleyDMM6500, KeithleyDMM6500Error, MeasurementFunction
 from .keysight_oscilloscope import KeysightDSOX6004A, KeysightDSOX6004AError
+from .tektronix_oscilloscope import TektronixMSO24, TektronixMSO24Error
 
 __all__ = [
     # Version information
@@ -35,12 +36,16 @@ __all__ = [
 
     # Keithley Multimeter classes
     "KeithleyDMM6500",
-    "KeithleyDMM6500Error", 
+    "KeithleyDMM6500Error",
     "MeasurementFunction",
 
     # Keysight Oscilloscope classes
     "KeysightDSOX6004A",
     "KeysightDSOX6004AError",
+
+    # Tektronix Oscilloscope classes
+    "TektronixMSO24",
+    "TektronixMSO24Error",
 ]
 
 # Library information
@@ -62,7 +67,8 @@ LIBRARY_INFO = {
             "Keithley DMM7510"
         ],
         "oscilloscopes": [
-            "Keysight DSOX6000 Series"
+            "Keysight DSOX6000 Series",
+            "Tektronix MSO2 Series (MSO24)"
         ]
     }
 }
