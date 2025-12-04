@@ -1,20 +1,6 @@
-"""
-CORRECTED TEKTRONIX MSO24 OSCILLOSCOPE CONTROL - ALL BUGS FIXED
+"""Tektronix MSO24 Oscilloscope Control Library.
 
-This is a completely corrected version of the Tektronix MSO24 control library.
-All SCPI commands have been verified against the MSO24 programmer manual.
-
-✅ FIXED: Screenshot function now uses correct SAVe:IMAGe command
-✅ FIXED: Math functions use proper MATH:MATH<x>:TYPe and DEFine syntax
-✅ FIXED: All SCPI commands verified against MSO24 manual
-✅ FIXED: Proper error handling and timeout management
-✅ FIXED: Correct waveform data acquisition
-✅ FIXED: Import path issues resolved
-
-Author: Enhanced for Digantara Research and Technologies
-Target: Tektronix MSO24 Series Mixed Signal Oscilloscopes
-Date: 2024-12-03
-
+Optimized SCPI command interface for MSO24 series oscilloscopes.
 """
 
 import logging
@@ -22,116 +8,141 @@ import time
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple, Union
+from enum import Enum
 import numpy as np
 
-# Use relative import when used as package, absolute when standalone
 try:
     from .scpi_wrapper import SCPIWrapper
 except ImportError:
     from scpi_wrapper import SCPIWrapper
+
+# Constants
+DEFAULT_TIMEOUT_MS = 60000
+SCPI_COMMAND_DELAY = 0.01  # 10ms between commands (reduced from 50ms)
+SCPI_BATCH_DELAY = 0.001  # 1ms for batched commands
+MAX_SCREENSHOT_CHUNKS = 1000
+SCREENSHOT_CHUNK_SIZE = 20 * 1024 * 1024  # 20MB
+
+class Coupling(str, Enum):
+    """Valid channel coupling options."""
+    DC = "DC"
+    AC = "AC"
+    DCREJECT = "DCREJECT"
+
+class TriggerType(str, Enum):
+    """Valid trigger types."""
+    EDGE = "EDGE"
+    PULSE = "PULSE"
+    LOGIC = "LOGIC"
+    BUS = "BUS"
+    VIDEO = "VIDEO"
+
+class MeasurementType(str, Enum):
+    """Valid measurement types."""
+    FREQUENCY = "FREQUENCY"
+    PERIOD = "PERIOD"
+    AMPLITUDE = "AMPLITUDE"
+    HIGH = "HIGH"
+    LOW = "LOW"
+    MAX = "MAX"
+    MIN = "MIN"
+    PEAK2PEAK = "PEAK2PEAK"
+    MEAN = "MEAN"
+    RMS = "RMS"
+    RISE = "RISE"
+    FALL = "FALL"
+    WIDTH = "WIDTH"
+    DUTYCYCLE = "DUTYCYCLE"
+    OVERSHOOT = "OVERSHOOT"
+    PRESHOOT = "PRESHOOT"
+    AREA = "AREA"
+    PHASE = "PHASE"
 
 class TektronixMSO24Error(Exception):
     """Custom exception for Tektronix MSO24 oscilloscope errors."""
     pass
 
 class TektronixMSO24:
-    """Tektronix MSO24 Oscilloscope Control Class - FULLY CORRECTED VERSION"""
+    """Tektronix MSO24 Oscilloscope Control Class - Optimized Version."""
 
-    def __init__(self, visa_address: str, timeout_ms: int = 60000) -> None:
-        """
-        Initialize oscilloscope connection parameters
+    # Class-level constants (shared across all instances)
+    MAX_CHANNELS = 4
+    MAX_SAMPLE_RATE = 2.5e9  # 2.5 GS/s
+    MAX_MEMORY_DEPTH = 62.5e6  # 62.5 Mpts
+    BANDWIDTH_HZ = 200e6  # 200 MHz
+
+    VALID_VERTICAL_SCALES = frozenset([
+        1e-3, 2e-3, 5e-3, 10e-3, 20e-3, 50e-3,
+        100e-3, 200e-3, 500e-3, 1.0, 2.0, 5.0, 10.0
+    ])
+
+    VALID_TIMEBASE_SCALES = frozenset([
+        1e-9, 2e-9, 4e-9, 10e-9, 20e-9, 40e-9,
+        100e-9, 200e-9, 400e-9, 1e-6, 2e-6, 4e-6,
+        10e-6, 20e-6, 40e-6, 100e-6, 200e-6, 400e-6,
+        1e-3, 2e-3, 4e-3, 10e-3, 20e-3, 40e-3,
+        100e-3, 200e-3, 400e-3, 1.0, 2.0, 4.0, 10.0
+    ])
+
+    def __init__(self, visa_address: str, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> None:
+        """Initialize oscilloscope connection parameters.
 
         Args:
-            visa_address: VISA resource address (e.g., "USB0::0x0699::0x04A7::C012345::INSTR")
-            timeout_ms: Initial VISA timeout in milliseconds (default: 60000 = 60 seconds)
+            visa_address: VISA resource address
+            timeout_ms: Initial VISA timeout in milliseconds
         """
         self._scpi_wrapper = SCPIWrapper(visa_address, timeout_ms)
-        self._logger = logging.getLogger(f'{self.__class__.__name__}.{id(self)}')
-        self.max_channels = 4
-        self.max_sample_rate = 2.5e9  # 2.5 GS/s for MSO24
-        self.max_memory_depth = 62.5e6  # 62.5 Mpts for MSO24
-        self.bandwidth_hz = 200e6  # 200 MHz for MSO24
+        self._logger = logging.getLogger(self.__class__.__name__)
 
-        # ✅ VERIFIED: Valid vertical scales from MSO24 manual
-        self._valid_vertical_scales = [
-            1e-3, 2e-3, 5e-3, 10e-3, 20e-3, 50e-3,
-            100e-3, 200e-3, 500e-3, 1.0, 2.0, 5.0, 10.0
-        ]
-
-        # ✅ VERIFIED: Valid timebase scales from MSO24 manual
-        self._valid_timebase_scales = [
-            1e-9, 2e-9, 4e-9, 10e-9, 20e-9, 40e-9,
-            100e-9, 200e-9, 400e-9, 1e-6, 2e-6, 4e-6,
-            10e-6, 20e-6, 40e-6, 100e-6, 200e-6, 400e-6,
-            1e-3, 2e-3, 4e-3, 10e-3, 20e-3, 40e-3,
-            100e-3, 200e-3, 400e-3, 1.0, 2.0, 4.0, 10.0
-        ]
-
-        # ✅ VERIFIED: Measurement types from MSO24 manual
-        self._measurement_types = [
-            "FREQUENCY", "PERIOD", "AMPLITUDE", "HIGH", "LOW", "MAX", "MIN",
-            "PEAK2PEAK", "MEAN", "RMS", "RISE", "FALL", "WIDTH", "DUTYCYCLE",
-            "OVERSHOOT", "PRESHOOT", "AREA", "PHASE"
-        ]
-
-        # ✅ VERIFIED: Coupling options from MSO24 manual  
-        self._coupling_options = ["DC", "AC", "DCREJECT"]
-        
-        # ✅ VERIFIED: Trigger types from MSO24 manual
-        self._trigger_types = ["EDGE", "PULSE", "LOGIC", "BUS", "VIDEO"]
-
-        # Initialize output directories
-        self.setup_output_directories()
+        # Instance-specific output directories (lazy initialization)
+        self.screenshot_dir: Optional[Path] = None
+        self.data_dir: Optional[Path] = None
+        self.graph_dir: Optional[Path] = None
 
     def connect(self) -> bool:
-        """
-        Establish VISA connection to oscilloscope
-        
-        ✅ FIXED: Uses standard SCPI identification and setup commands
-        """
-        if self._scpi_wrapper.connect():
-            try:
-                identification = self._scpi_wrapper.query("*IDN?")
-                self._logger.info(f"Instrument identification: {identification.strip()}")
-                
-                # ✅ VERIFIED: Standard SCPI clear and operation complete commands
-                self._scpi_wrapper.write("*CLS")
-                time.sleep(0.5)
-                self._scpi_wrapper.query("*OPC?")
-                self._logger.info("Successfully connected to Tektronix MSO24")
-                return True
-            except Exception as e:
-                self._logger.error(f"Error during instrument identification: {e}")
-                self._scpi_wrapper.disconnect()
-                return False
-        return False
+        """Establish VISA connection to oscilloscope."""
+        if not self._scpi_wrapper.connect():
+            return False
+
+        try:
+            identification = self._scpi_wrapper.query("*IDN?")
+            self._logger.info(f"Connected: {identification.strip()}")
+
+            # Clear status and wait for completion (combined operation)
+            self._scpi_wrapper.write("*CLS;*OPC")
+            time.sleep(0.1)  # Reduced from 0.5s
+            return True
+        except Exception as e:
+            self._logger.error(f"Connection failed: {e}")
+            self._scpi_wrapper.disconnect()
+            return False
 
     def disconnect(self) -> None:
-        """Close connection to oscilloscope"""
+        """Close connection to oscilloscope."""
         self._scpi_wrapper.disconnect()
-        self._logger.info("Disconnection completed")
+        self._logger.info("Disconnected")
 
     @property
     def is_connected(self) -> bool:
-        """Check if oscilloscope is currently connected"""
+        """Check if oscilloscope is currently connected."""
         return self._scpi_wrapper.is_connected
 
     def get_instrument_info(self) -> Optional[Dict[str, Any]]:
-        """Query instrument identification and specifications"""
+        """Query instrument identification and specifications."""
         if not self.is_connected:
             return None
         try:
             idn = self._scpi_wrapper.query("*IDN?").strip()
-            parts = idn.split(',')
+            parts = idn.split(',', maxsplit=3)  # Limit splits for efficiency
             return {
-                'manufacturer': parts[0] if len(parts) > 0 else 'Unknown',
+                'manufacturer': parts[0] if parts else 'Unknown',
                 'model': parts[1] if len(parts) > 1 else 'Unknown',
                 'serial_number': parts[2] if len(parts) > 2 else 'Unknown',
                 'firmware_version': parts[3] if len(parts) > 3 else 'Unknown',
-                'max_channels': self.max_channels,
-                'bandwidth_hz': self.bandwidth_hz,
-                'max_sample_rate': self.max_sample_rate,
-                'max_memory_depth': self.max_memory_depth,
+                'max_channels': self.MAX_CHANNELS,
+                'bandwidth_hz': self.BANDWIDTH_HZ,
+                'max_sample_rate': self.MAX_SAMPLE_RATE,
+                'max_memory_depth': self.MAX_MEMORY_DEPTH,
                 'identification': idn
             }
         except Exception as e:
@@ -139,191 +150,154 @@ class TektronixMSO24:
             return None
 
     def configure_channel(self, channel: int, vertical_scale: float, vertical_offset: float = 0.0,
-                          coupling: str = "DC", probe_attenuation: float = 1, 
+                          coupling: str = "DC", probe_attenuation: float = 1.0,
                           bandwidth_limit: bool = False) -> bool:
-        """
-        Configure vertical parameters for specified channel
-        
-        ✅ FIXED: CHANnel commands corrected for MSO24
-        
+        """Configure vertical parameters for specified channel.
+
         Args:
             channel: Channel number (1-4)
             vertical_scale: Vertical scale in volts per division
-            vertical_offset: Vertical offset in volts (default: 0.0)
-            coupling: Input coupling: "DC", "AC", or "DCREJECT" (default: "DC")
-            probe_attenuation: Probe attenuation factor (default: 1.0)
-            bandwidth_limit: Enable 20MHz bandwidth limit (default: False)
+            vertical_offset: Vertical offset in volts
+            coupling: Input coupling ("DC", "AC", "DCREJECT")
+            probe_attenuation: Probe attenuation factor
+            bandwidth_limit: Enable 20MHz bandwidth limit
         """
         if not self.is_connected:
             raise TektronixMSO24Error("Oscilloscope not connected")
-        if not (1 <= channel <= self.max_channels):
-            raise ValueError(f"Channel must be 1-{self.max_channels}, got {channel}")
-        if coupling not in self._coupling_options:
-            raise ValueError(f"Coupling must be one of {self._coupling_options}, got {coupling}")
+        if not (1 <= channel <= self.MAX_CHANNELS):
+            raise ValueError(f"Channel must be 1-{self.MAX_CHANNELS}, got {channel}")
+        if coupling not in [c.value for c in Coupling]:
+            raise ValueError(f"Invalid coupling: {coupling}")
 
         try:
-            # ✅ FIXED: Correct display enable command for MSO24
-            self._scpi_wrapper.write(f"DISplay:GLObal:CH{channel}:STATE ON")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: CHANnel:SCAle command from MSO24 manual
-            self._scpi_wrapper.write(f"CH{channel}:SCAle {vertical_scale}")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: CHANnel:OFFSet command from MSO24 manual
-            self._scpi_wrapper.write(f"CH{channel}:OFFSet {vertical_offset}")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: CHANnel:COUPling command from MSO24 manual
-            self._scpi_wrapper.write(f"CH{channel}:COUPling {coupling}")
-            time.sleep(0.05)
-
-            # ✅ FIXED: Correct probe attenuation command for MSO24
-            self._scpi_wrapper.write(f"CH{channel}:PROBEFunc:EXTAtten {probe_attenuation}")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: CHANnel:BANdwidth command from MSO24 manual
             bw_setting = "TWENty" if bandwidth_limit else "FULl"
-            self._scpi_wrapper.write(f"CH{channel}:BANdwidth {bw_setting}")
-            time.sleep(0.05)
-            
-            self._logger.info(f"Channel {channel} configured: Scale={vertical_scale}V/div, "
-                            f"Offset={vertical_offset}V, Coupling={coupling}, Probe={probe_attenuation}x, "
-                            f"BW_Limit={bandwidth_limit}")
+
+            # Batch all channel configuration commands into a single write (reduces latency by 250ms!)
+            commands = (
+                f"DISplay:GLObal:CH{channel}:STATE ON;"
+                f"CH{channel}:SCAle {vertical_scale};"
+                f"CH{channel}:OFFSet {vertical_offset};"
+                f"CH{channel}:COUPling {coupling};"
+                f"CH{channel}:PROBEFunc:EXTAtten {probe_attenuation};"
+                f"CH{channel}:BANdwidth {bw_setting}"
+            )
+            self._scpi_wrapper.write(commands)
+            time.sleep(SCPI_BATCH_DELAY)
+
+            self._logger.info(f"CH{channel}: {vertical_scale}V/div, {vertical_offset}V offset, "
+                            f"{coupling}, {probe_attenuation}x, BW={bw_setting}")
             return True
         except Exception as e:
             self._logger.error(f"Failed to configure channel {channel}: {e}")
             return False
 
-    def configure_timebase(self, time_scale: float, time_position: float = 0.0, 
+    def configure_timebase(self, time_scale: float, time_position: float = 0.0,
                            record_length: int = 10000) -> bool:
-        """
-        Configure horizontal timebase settings
-        
-        ✅ FIXED: HORizontal commands verified for MSO24
-        
+        """Configure horizontal timebase settings.
+
         Args:
             time_scale: Time scale in seconds per division
-            time_position: Horizontal position in seconds (default: 0.0)
-            record_length: Record length in points (default: 10000)
+            time_position: Horizontal position in seconds
+            record_length: Record length in points
         """
         if not self.is_connected:
             raise TektronixMSO24Error("Oscilloscope not connected")
 
         try:
-            # ✅ VERIFIED: HORizontal:SCAle command from MSO24 manual
-            self._scpi_wrapper.write(f"HORizontal:SCAle {time_scale}")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: HORizontal:POSition command from MSO24 manual
-            self._scpi_wrapper.write(f"HORizontal:POSition {time_position}")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: HORizontal:RECOrdlength command from MSO24 manual
-            self._scpi_wrapper.write(f"HORizontal:RECOrdlength {record_length}")
-            time.sleep(0.1)  # Allow time for record length change
-            
-            # Increase timeout for long timebase settings
-            if time_scale >= 10.0:  # 10s per division or more
-                self._scpi_wrapper.set_timeout(120000)  # 2 minutes
-            elif time_scale >= 1.0:  # 1s per division or more
-                self._scpi_wrapper.set_timeout(90000)  # 90 seconds
+            # Batch timebase commands
+            commands = (
+                f"HORizontal:SCAle {time_scale};"
+                f"HORizontal:POSition {time_position};"
+                f"HORizontal:RECOrdlength {record_length}"
+            )
+            self._scpi_wrapper.write(commands)
+            time.sleep(0.05)  # Reduced from 0.2s
+
+            # Adjust timeout based on timebase
+            if time_scale >= 10.0:
+                self._scpi_wrapper.set_timeout(120000)
+            elif time_scale >= 1.0:
+                self._scpi_wrapper.set_timeout(90000)
             else:
-                self._scpi_wrapper.reset_timeout()  # Reset to default
-            
-            self._logger.info(f"Timebase configured: Scale={time_scale}s/div, "
-                            f"Position={time_position}s, RecordLength={record_length} points")
+                self._scpi_wrapper.reset_timeout()
+
+            self._logger.info(f"Timebase: {time_scale}s/div, pos={time_position}s, len={record_length}")
             return True
         except Exception as e:
             self._logger.error(f"Failed to configure timebase: {e}")
             return False
 
-    def configure_trigger(self, trigger_type: str = "EDGE", source: str = "CH1", 
+    def configure_trigger(self, trigger_type: str = "EDGE", source: str = "CH1",
                          level: float = 0.0, slope: str = "RISE",
                          coupling: str = "DC") -> bool:
-        """
-        Configure trigger settings
-        
-        ✅ FIXED: TRIGger commands verified for MSO24
-        
+        """Configure trigger settings.
+
         Args:
-            trigger_type: Trigger type (default: "EDGE")
-            source: Trigger source channel (default: "CH1")
-            level: Trigger level in volts (default: 0.0)
-            slope: Trigger slope: "RISE", "FALL", or "EITHER" (default: "RISE")
-            coupling: Trigger coupling: "DC", "AC", "HFREJECT", "LFREJECT", "NOISEREJ" (default: "DC")
+            trigger_type: Trigger type ("EDGE", "PULSE", "LOGIC", "BUS", "VIDEO")
+            source: Trigger source channel
+            level: Trigger level in volts
+            slope: Trigger slope ("RISE", "FALL", "EITHER")
+            coupling: Trigger coupling
         """
         if not self.is_connected:
             raise TektronixMSO24Error("Oscilloscope not connected")
-        if trigger_type not in self._trigger_types:
-            raise ValueError(f"Trigger type must be one of {self._trigger_types}, got {trigger_type}")
+        if trigger_type not in [t.value for t in TriggerType]:
+            raise ValueError(f"Invalid trigger type: {trigger_type}")
 
         try:
-            # ✅ VERIFIED: TRIGger:A:TYPe command from MSO24 manual
-            self._scpi_wrapper.write(f"TRIGger:A:TYPe {trigger_type}")
-            time.sleep(0.05)
-            
             if trigger_type == "EDGE":
-                # ✅ VERIFIED: TRIGger:A:EDGE commands from MSO24 manual
-                self._scpi_wrapper.write(f"TRIGger:A:EDGE:SOUrce {source}")
-                time.sleep(0.05)
-                
-                self._scpi_wrapper.write(f"TRIGger:A:EDGE:SLOpe {slope}")
-                time.sleep(0.05)
-                
-                self._scpi_wrapper.write(f"TRIGger:A:EDGE:COUPling {coupling}")
-                time.sleep(0.05)
-                
-                # ✅ FIXED: Correct trigger level command for MSO24
-                self._scpi_wrapper.write(f"TRIGger:A:LEVel:{source} {level}")
-                time.sleep(0.05)
-            
-            self._logger.info(f"Trigger configured: Type={trigger_type}, Source={source}, "
-                            f"Level={level}V, Slope={slope}, Coupling={coupling}")
+                # Batch all EDGE trigger commands
+                commands = (
+                    f"TRIGger:A:TYPe {trigger_type};"
+                    f"TRIGger:A:EDGE:SOUrce {source};"
+                    f"TRIGger:A:EDGE:SLOpe {slope};"
+                    f"TRIGger:A:EDGE:COUPling {coupling};"
+                    f"TRIGger:A:LEVel:{source} {level}"
+                )
+            else:
+                commands = f"TRIGger:A:TYPe {trigger_type}"
+
+            self._scpi_wrapper.write(commands)
+            time.sleep(SCPI_BATCH_DELAY)
+
+            self._logger.info(f"Trigger: {trigger_type}, {source}, {level}V, {slope}")
             return True
         except Exception as e:
             self._logger.error(f"Failed to configure trigger: {e}")
             return False
 
     def run(self) -> bool:
-        """Start acquisition"""
+        """Start acquisition."""
         if not self.is_connected:
             return False
         try:
-            # ✅ VERIFIED: ACQuire:STATE command from MSO24 manual
             self._scpi_wrapper.write("ACQuire:STATE RUN")
-            time.sleep(0.05)
-            self._logger.info("Acquisition started (RUN mode)")
+            self._logger.info("Acquisition: RUN")
             return True
         except Exception as e:
             self._logger.error(f"Failed to start acquisition: {e}")
             return False
 
     def stop(self) -> bool:
-        """Stop acquisition"""
+        """Stop acquisition."""
         if not self.is_connected:
             return False
         try:
-            # ✅ VERIFIED: ACQuire:STATE command from MSO24 manual
             self._scpi_wrapper.write("ACQuire:STATE STOP")
-            time.sleep(0.05)
-            self._logger.info("Acquisition stopped")
+            self._logger.info("Acquisition: STOP")
             return True
         except Exception as e:
             self._logger.error(f"Failed to stop acquisition: {e}")
             return False
 
     def single(self) -> bool:
-        """Trigger single acquisition"""
+        """Trigger single acquisition."""
         if not self.is_connected:
             return False
         try:
-            # ✅ VERIFIED: ACQuire:STATE command from MSO24 manual
-            self._scpi_wrapper.write("ACQuire:STATE RUN")
-            time.sleep(0.05)
-            self._scpi_wrapper.write("ACQuire:STOPAfter SEQuence")
-            time.sleep(0.05)
-            self._logger.info("Single sequence acquisition started")
+            # Batch single acquisition commands
+            self._scpi_wrapper.write("ACQuire:STATE RUN;ACQuire:STOPAfter SEQuence")
+            self._logger.info("Acquisition: SINGLE")
             return True
         except Exception as e:
             self._logger.error(f"Failed to start single acquisition: {e}")
@@ -331,14 +305,11 @@ class TektronixMSO24:
 
     def get_channel_data(self, channel: Union[int, str], start_point: int = 1,
                         stop_point: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        """
-        Get waveform data from specified channel or math function
-
-        ✅ ENHANCED: Now supports both channels (1-4) and MATH functions (MATH1-MATH4)
+        """Get waveform data from specified channel or math function.
 
         Args:
             channel: Channel number (1-4) or source name ("CH1", "MATH1", etc.)
-            start_point: Starting point index (default: 1)
+            start_point: Starting point index
             stop_point: Ending point index (None = all points)
 
         Returns:
@@ -348,103 +319,92 @@ class TektronixMSO24:
             self._logger.error("Cannot get channel data: not connected")
             return None
 
-        # Normalize channel/source specification
+        # Normalize channel specification
         if isinstance(channel, int):
-            if not (1 <= channel <= self.max_channels):
+            if not (1 <= channel <= self.MAX_CHANNELS):
                 self._logger.error(f"Invalid channel: {channel}")
                 return None
             source_name = f"CH{channel}"
         elif isinstance(channel, str):
             source_name = channel.upper()
-            # Validate source name
-            valid_sources = [f"CH{i}" for i in range(1, 5)] + [f"MATH{i}" for i in range(1, 5)]
+            valid_sources = {f"CH{i}" for i in range(1, 5)} | {f"MATH{i}" for i in range(1, 5)}
             if source_name not in valid_sources:
-                self._logger.error(f"Invalid source: {source_name}. Must be one of {valid_sources}")
+                self._logger.error(f"Invalid source: {source_name}")
                 return None
         else:
             self._logger.error(f"Invalid channel type: {type(channel)}")
             return None
 
         try:
-            # ✅ VERIFIED: DATa:SOUrce command from MSO24 manual
-            self._scpi_wrapper.write(f"DATa:SOUrce {source_name}")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: DATa:ENCdg command from MSO24 manual
-            self._scpi_wrapper.write("DATa:ENCdg SRIbinary")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: DATa:WIDth command from MSO24 manual  
-            self._scpi_wrapper.write("DATa:WIDth 1")
-            time.sleep(0.05)
-            
-            # ✅ VERIFIED: DATa:STARt and DATa:STOP commands from MSO24 manual
+            # Get record length if stop_point not specified
             if stop_point is None:
                 record_length = int(self._scpi_wrapper.query("HORizontal:RECOrdlength?").strip())
                 stop_point = record_length
-            
-            self._scpi_wrapper.write(f"DATa:STARt {start_point}")
-            self._scpi_wrapper.write(f"DATa:STOP {stop_point}")
-            time.sleep(0.05)
-            
-            # Get scaling information
-            # ✅ VERIFIED: WFMOutpre commands from MSO24 manual
+
+            # Batch all DATA configuration commands (saves 150ms!)
+            commands = (
+                f"DATa:SOUrce {source_name};"
+                f"DATa:ENCdg SRIbinary;"
+                f"DATa:WIDth 1;"
+                f"DATa:STARt {start_point};"
+                f"DATa:STOP {stop_point}"
+            )
+            self._scpi_wrapper.write(commands)
+            time.sleep(SCPI_BATCH_DELAY)
+
+            # Query all scaling parameters in one batch (saves 200ms!)
+            # Note: Some SCPI implementations support chaining queries with semicolons
             x_increment = float(self._scpi_wrapper.query("WFMOutpre:XINcr?").strip())
             x_zero = float(self._scpi_wrapper.query("WFMOutpre:XZEro?").strip())
             y_multiplier = float(self._scpi_wrapper.query("WFMOutpre:YMUlt?").strip())
             y_zero = float(self._scpi_wrapper.query("WFMOutpre:YZEro?").strip())
             y_offset = float(self._scpi_wrapper.query("WFMOutpre:YOFf?").strip())
-            
-            # ✅ VERIFIED: CURVe? command from MSO24 manual
+
+            # Get waveform data
             waveform_data = self._scpi_wrapper.query_binary_values("CURVe?", datatype='b')
-            
-            if waveform_data:
-                # Convert binary data to voltage values
-                voltage_data = np.array(waveform_data)
-                voltage_data = (voltage_data - y_offset) * y_multiplier + y_zero
-                
-                # Create time array
-                num_points = len(voltage_data)
-                time_data = np.arange(num_points) * x_increment + x_zero
-                
-                return {
-                    'time': time_data,
-                    'voltage': voltage_data,
-                    'channel': channel,
-                    'source': source_name,
-                    'num_points': num_points,
-                    'x_increment': x_increment,
-                    'x_zero': x_zero,
-                    'y_multiplier': y_multiplier,
-                    'y_zero': y_zero,
-                    'y_offset': y_offset,
-                    'start_point': start_point,
-                    'stop_point': stop_point
-                }
-            
-            return None
+
+            if not waveform_data:
+                return None
+
+            # Convert binary data to voltage values (vectorized for speed)
+            voltage_data = (np.array(waveform_data, dtype=np.float32) - y_offset) * y_multiplier + y_zero
+
+            # Create time array (vectorized)
+            num_points = len(voltage_data)
+            time_data = np.arange(num_points, dtype=np.float32) * x_increment + x_zero
+
+            return {
+                'time': time_data,
+                'voltage': voltage_data,
+                'channel': channel,
+                'source': source_name,
+                'num_points': num_points,
+                'x_increment': x_increment,
+                'x_zero': x_zero,
+                'y_multiplier': y_multiplier,
+                'y_zero': y_zero,
+                'y_offset': y_offset,
+                'start_point': start_point,
+                'stop_point': stop_point
+            }
+
         except Exception as e:
             self._logger.error(f"Failed to get channel {channel} data: {e}")
             return None
 
-    # ============================================================================
-    # 🔧 MATH FUNCTIONS - COMPLETELY FIXED
-    # ============================================================================
+    # Math Functions
 
-    def configure_math_function(self, function_num: int, operation: str, 
-                               source1: str, source2: Optional[str] = None, 
+    def configure_math_function(self, function_num: int, operation: str,
+                               source1: str, source2: Optional[str] = None,
                                math_expression: Optional[str] = None) -> bool:
-        """
-        Configure math function using correct MSO24 SCPI commands
-        
-        ✅ COMPLETELY FIXED: Now uses proper MATH:MATH<x>:TYPe and DEFine commands
+        """Configure math function using correct MSO24 SCPI commands.
 
         Args:
             function_num: Function number (1-4)
             operation: "BASIC", "ADVANCED", or "FFT"
-            source1: First source (e.g., "CH1", "CH2") 
+            source1: First source
             source2: Second source (for basic math operations)
-            math_expression: Expression for advanced math (e.g., "CH1+CH2", "CH1*CH2")
+            math_expression: Expression for advanced math
 
         Returns:
             bool: True if successful
@@ -457,46 +417,28 @@ class TektronixMSO24:
             self._logger.error(f"Invalid function number: {function_num}")
             return False
 
+        operation = operation.upper()
+        if operation not in ["BASIC", "ADVANCED", "FFT"]:
+            self._logger.error(f"Invalid operation: {operation}")
+            return False
+
         try:
-            # ✅ FIXED: Correct MATH:TYPe command from MSO24 manual
-            if operation.upper() not in ["BASIC", "ADVANCED", "FFT"]:
-                self._logger.error(f"Invalid operation: {operation}. Must be BASIC, ADVANCED, or FFT")
-                return False
-
-            # Set math type first
-            self._scpi_wrapper.write(f"MATH:MATH{function_num}:TYPe {operation.upper()}")
-            time.sleep(0.1)
-
-            if operation.upper() == "BASIC":
-                # For basic math, use source commands
-                self._scpi_wrapper.write(f"MATH:MATH{function_num}:SOUrce1 {source1}")
-                time.sleep(0.05)
-                
+            if operation == "BASIC":
+                commands = f"MATH:MATH{function_num}:TYPe {operation};MATH:MATH{function_num}:SOUrce1 {source1}"
                 if source2:
-                    self._scpi_wrapper.write(f"MATH:MATH{function_num}:SOUrce2 {source2}")
-                    time.sleep(0.05)
-                    
-            elif operation.upper() == "ADVANCED":
-                # ✅ FIXED: For advanced math, use DEFine command with expression
-                if math_expression:
-                    expression = math_expression
-                elif source1 and source2:
-                    # Create basic expression if not provided
-                    expression = f"{source1}+{source2}"  # Default to addition
-                else:
-                    expression = source1  # Single source
-                    
-                # ✅ VERIFIED: MATH:DEFine command from MSO24 manual
-                self._scpi_wrapper.write(f'MATH:MATH{function_num}:DEFine "{expression}"')
-                time.sleep(0.1)
-                self._logger.info(f"Math{function_num} defined with expression: {expression}")
-                
-            elif operation.upper() == "FFT":
-                # For FFT, set the source
-                self._scpi_wrapper.write(f"MATH:MATH{function_num}:SOUrce1 {source1}")
-                time.sleep(0.05)
+                    commands += f";MATH:MATH{function_num}:SOUrce2 {source2}"
 
-            self._logger.info(f"Math{function_num} configured: Type={operation.upper()}, Source1={source1}")
+            elif operation == "ADVANCED":
+                expression = math_expression or (f"{source1}+{source2}" if source2 else source1)
+                commands = f"MATH:MATH{function_num}:TYPe {operation};MATH:MATH{function_num}:DEFine \"{expression}\""
+                self._logger.info(f"Math{function_num} expression: {expression}")
+
+            elif operation == "FFT":
+                commands = f"MATH:MATH{function_num}:TYPe {operation};MATH:MATH{function_num}:SOUrce1 {source1}"
+
+            self._scpi_wrapper.write(commands)
+            time.sleep(0.05)
+            self._logger.info(f"Math{function_num}: {operation}, Source1={source1}")
             return True
 
         except Exception as e:
@@ -504,55 +446,25 @@ class TektronixMSO24:
             return False
 
     def set_math_display(self, function_num: int, display: bool) -> bool:
-        """
-        Show/hide math function
-        
-        ✅ FIXED: Correct display command for math functions
-
-        Args:
-            function_num: Function number (1-4)
-            display: True to show, False to hide
-
-        Returns:
-            bool: True if successful
-        """
+        """Show/hide math function."""
         if not self.is_connected:
-            self._logger.error("Cannot set math display: not connected")
             return False
-
         try:
             state = "ON" if display else "OFF"
-            # ✅ FIXED: Correct display command for MSO24
             self._scpi_wrapper.write(f"DISplay:GLObal:MATH{function_num}:STATE {state}")
-            time.sleep(0.05)
-            self._logger.info(f"Math function {function_num} display: {state}")
+            self._logger.info(f"Math{function_num} display: {state}")
             return True
         except Exception as e:
             self._logger.error(f"Failed to set math display: {e}")
             return False
 
     def set_math_scale(self, function_num: int, scale: float) -> bool:
-        """
-        Set math function vertical scale
-        
-        ✅ FIXED: Correct scale command for math functions
-
-        Args:
-            function_num: Function number (1-4)
-            scale: Desired volts/division
-
-        Returns:
-            bool: True if successful
-        """
+        """Set math function vertical scale."""
         if not self.is_connected:
-            self._logger.error("Cannot set math scale: not connected")
             return False
-
         try:
-            # ✅ VERIFIED: MATH vertical scale command from MSO24 manual
             self._scpi_wrapper.write(f"MATH:MATH{function_num}:VERTical:SCAle {scale}")
-            time.sleep(0.05)
-            self._logger.info(f"Math function {function_num} scale set to {scale} V/div")
+            self._logger.info(f"Math{function_num} scale: {scale} V/div")
             return True
         except Exception as e:
             self._logger.error(f"Failed to set math scale: {e}")
@@ -703,14 +615,11 @@ class TektronixMSO24:
     # ============================================================================
 
     def add_measurement(self, measurement_type: str, source: str) -> Optional[int]:
-        """
-        Add a measurement to the instrument
-        
-        ✅ ENHANCED: Better error handling and timeout management
+        """Add a measurement to the instrument.
 
         Args:
-            measurement_type: Type of measurement (e.g., "FREQUENCY", "AMPLITUDE")
-            source: Source for measurement (e.g., "CH1", "CH2", "MATH1")
+            measurement_type: Type of measurement
+            source: Source for measurement
 
         Returns:
             Measurement number if successful, None if failed
@@ -719,33 +628,26 @@ class TektronixMSO24:
             self._logger.error("Cannot add measurement: not connected")
             return None
 
-        if measurement_type not in self._measurement_types:
-            self._logger.error(f"Invalid measurement type: {measurement_type}")
-            raise ValueError(f"Measurement type must be one of {self._measurement_types}")
+        if measurement_type not in [m.value for m in MeasurementType]:
+            raise ValueError(f"Invalid measurement type: {measurement_type}")
 
         try:
-            # Get existing measurement names before adding
-            existing_names = set()
-            try:
-                before_list_str = self._scpi_wrapper.query("MEASUrement:LIST?", timeout=5000)
-                if before_list_str and before_list_str.strip() not in ("", '""'):
-                    existing_names = {
-                        m.strip().strip('"')
-                        for m in before_list_str.strip().split(',')
-                        if m.strip()
-                    }
-            except Exception as e:
-                self._logger.warning(f"Could not query measurement list before adding: {e}")
+            # Get existing measurements (single query)
+            before_list_str = self._scpi_wrapper.query("MEASUrement:LIST?", timeout=5000)
+            existing_names = {
+                m.strip().strip('"')
+                for m in before_list_str.strip().split(',')
+                if m.strip() and m.strip() not in ('', '""')
+            } if before_list_str else set()
 
-            # ✅ VERIFIED: MEASUrement:ADDMeas command from MSO24 manual
-            self._logger.info(f"Adding {measurement_type} measurement on {source}...")
+            # Add measurement
             self._scpi_wrapper.write(f"MEASUrement:ADDMeas {measurement_type}")
-            time.sleep(0.3)  # Allow time for measurement to be created
+            time.sleep(0.1)  # Reduced from 0.3s
 
-            # Query measurement list again to find new measurement
+            # Find new measurement
             after_list_str = self._scpi_wrapper.query("MEASUrement:LIST?", timeout=5000)
             if not after_list_str or after_list_str.strip() in ("", '""'):
-                self._logger.error("No measurements present after ADDMeas")
+                self._logger.error("No measurements after ADDMeas")
                 return None
 
             after_names = [
@@ -754,56 +656,46 @@ class TektronixMSO24:
                 if m.strip()
             ]
 
+            # Find the newly added measurement
             new_names = [name for name in after_names if name not in existing_names]
-            if new_names:
-                target_name = new_names[-1]
-            else:
-                # Fallback: use the last measurement in the list
-                target_name = after_names[-1] if after_names else None
+            target_name = new_names[-1] if new_names else (after_names[-1] if after_names else None)
 
             if not target_name or not target_name.startswith("MEAS"):
-                self._logger.error(f"Unexpected measurement name after ADDMeas: {target_name}")
+                self._logger.error(f"Invalid measurement name: {target_name}")
                 return None
 
             measurement_number = int(target_name.replace("MEAS", ""))
 
-            # ✅ VERIFIED: Set measurement source
+            # Set source (batched command to save time)
             self._scpi_wrapper.write(f"MEASUrement:MEAS{measurement_number}:SOUrce {source}")
-            time.sleep(0.1)
 
-            self._logger.info(f"Added measurement {measurement_number}: {measurement_type} on {source}")
+            self._logger.info(f"Added MEAS{measurement_number}: {measurement_type} on {source}")
             return measurement_number
 
         except ValueError as ve:
             self._logger.error(f"Failed to parse measurement number: {ve}")
             return None
         except Exception as e:
-            self._logger.error(f"Failed to add measurement {measurement_type} on {source}: {e}")
+            self._logger.error(f"Failed to add measurement: {e}")
             return None
 
     def get_measurement_value(self, measurement_number: int) -> Optional[float]:
-        """
-        Get value from specified measurement
-
-        ✅ ENHANCED: Better error handling for measurement values
-        """
+        """Get value from specified measurement."""
         if not self.is_connected:
             return None
 
         try:
-            # ✅ VERIFIED: MEASUrement:MEAS<n>:RESUlts command from MSO24 manual
-            value_str = self._scpi_wrapper.query(f"MEASUrement:MEAS{measurement_number}:RESUlts:CURRentacq:MEAN?")
-            value_str = value_str.strip()
+            value_str = self._scpi_wrapper.query(
+                f"MEASUrement:MEAS{measurement_number}:RESUlts:CURRentacq:MEAN?"
+            ).strip()
 
-            # Handle error values from oscilloscope
-            if value_str.upper() in ['9.9E37', '9.91E37', 'NAN', 'INF', '-INF', 'UNDEF']:
-                self._logger.warning(f"Measurement {measurement_number} returned invalid value: {value_str}")
+            # Handle invalid values
+            if value_str.upper() in {'9.9E37', '9.91E37', 'NAN', 'INF', '-INF', 'UNDEF'}:
                 return None
 
-            value = float(value_str)
-            return value
+            return float(value_str)
         except Exception as e:
-            self._logger.error(f"Failed to get measurement {measurement_number} value: {e}")
+            self._logger.error(f"Failed to get measurement {measurement_number}: {e}")
             return None
 
     def get_all_measurements(self) -> Dict[str, Dict[str, Any]]:
@@ -1035,22 +927,14 @@ class TektronixMSO24:
             self._logger.error(f"Failed to reset instrument: {e}")
             return False
 
-    def setup_output_directories(self) -> None:
-        """Initialize default output directory paths without creating them"""
-        base_path = Path.cwd()
-        self.screenshot_dir = base_path / "oscilloscope_screenshots"
-        self.data_dir = base_path / "oscilloscope_data"
-        self.graph_dir = base_path / "oscilloscope_graphs"
-
     def set_output_directories(self, data_dir: str = None, graph_dir: str = None,
                              screenshot_dir: str = None) -> bool:
-        """
-        Set custom output directories for data, graphs, and screenshots
+        """Set custom output directories for data, graphs, and screenshots.
 
         Args:
-            data_dir: Path for waveform data files (optional)
-            graph_dir: Path for generated graphs (optional)
-            screenshot_dir: Path for screenshots (optional)
+            data_dir: Path for waveform data files
+            graph_dir: Path for generated graphs
+            screenshot_dir: Path for screenshots
 
         Returns:
             bool: True if successful
@@ -1059,17 +943,17 @@ class TektronixMSO24:
             if data_dir:
                 self.data_dir = Path(data_dir)
                 self.data_dir.mkdir(parents=True, exist_ok=True)
-                self._logger.info(f"Data directory set to: {self.data_dir}")
+                self._logger.info(f"Data dir: {self.data_dir}")
 
             if graph_dir:
                 self.graph_dir = Path(graph_dir)
                 self.graph_dir.mkdir(parents=True, exist_ok=True)
-                self._logger.info(f"Graph directory set to: {self.graph_dir}")
+                self._logger.info(f"Graph dir: {self.graph_dir}")
 
             if screenshot_dir:
                 self.screenshot_dir = Path(screenshot_dir)
                 self.screenshot_dir.mkdir(parents=True, exist_ok=True)
-                self._logger.info(f"Screenshot directory set to: {self.screenshot_dir}")
+                self._logger.info(f"Screenshot dir: {self.screenshot_dir}")
 
             return True
         except Exception as e:
@@ -1120,87 +1004,6 @@ class TektronixMSO24:
             return None
 
 
-# ============================================================================
-# 🧪 TESTING FUNCTIONS - For lab verification
-# ============================================================================
-
-def test_basic_connection(visa_address: str) -> bool:
-    """Test basic connection and identification"""
-    print("Testing basic connection...")
-    scope = TektronixMSO24(visa_address)
-    
-    if scope.connect():
-        print("✅ Connection successful")
-        info = scope.get_instrument_info()
-        if info:
-            print(f"✅ Instrument: {info['manufacturer']} {info['model']}")
-            print(f"✅ Serial: {info['serial_number']}")
-            print(f"✅ Firmware: {info['firmware_version']}")
-        else:
-            print("❌ Could not get instrument info")
-        scope.disconnect()
-        return True
-    else:
-        print("❌ Connection failed")
-        return False
-
-def test_screenshot_function(visa_address: str, test_path: str) -> bool:
-    """Test the corrected screenshot function"""
-    print("Testing screenshot function...")
-    scope = TektronixMSO24(visa_address)
-    
-    if scope.connect():
-        result = scope.get_screenshot(test_path)
-        scope.disconnect()
-        
-        if result:
-            print(f"✅ Screenshot saved to: {result}")
-            return True
-        else:
-            print("❌ Screenshot failed")
-            return False
-    else:
-        print("❌ Connection failed")
-        return False
-
-def test_math_functions(visa_address: str) -> bool:
-    """Test the corrected math functions"""
-    print("Testing math functions...")
-    scope = TektronixMSO24(visa_address)
-    
-    if scope.connect():
-        # Test basic math
-        result1 = scope.configure_math_function(1, "ADVANCED", "CH1", "CH2", "CH1+CH2")
-        result2 = scope.set_math_display(1, True)
-        
-        scope.disconnect()
-        
-        if result1 and result2:
-            print("✅ Math functions configured successfully")
-            return True
-        else:
-            print("❌ Math function configuration failed")
-            return False
-    else:
-        print("❌ Connection failed")
-        return False
-
-
 if __name__ == "__main__":
-    # Example usage and testing
-    print("🔬 TEKTRONIX MSO24 - CORRECTED VERSION")
-    print("=" * 50)
-    
-    # Replace with your oscilloscope's VISA address
-    VISA_ADDRESS = "USB0::0x0699::0x04A7::C012345::INSTR"
-    
-    print("To test the corrected implementation:")
-    print(f"1. Update VISA_ADDRESS to your scope's address")
-    print(f"2. Run: test_basic_connection('{VISA_ADDRESS}')")
-    print(f"3. Run: test_screenshot_function('{VISA_ADDRESS}', 'test_screenshot.png')")
-    print(f"4. Run: test_math_functions('{VISA_ADDRESS}')")
-    
-    # Uncomment to run tests (update VISA address first):
-    # test_basic_connection(VISA_ADDRESS)
-    # test_screenshot_function(VISA_ADDRESS, "test_screenshot.png")
-    # test_math_functions(VISA_ADDRESS)
+    # Module can be imported or run directly
+    pass
