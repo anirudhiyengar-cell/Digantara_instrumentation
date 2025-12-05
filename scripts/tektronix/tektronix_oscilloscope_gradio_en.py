@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 =================================================================================
-TEKTRONIX MSO24 OSCILLOSCOPE CONTROL - GRADIO WEB INTERFACE
+DIGANTARA Tektronix MSO24 OSCILLOSCOPE CONTROL - GRADIO WEB INTERFACE
 =================================================================================
 
 PURPOSE:
     This application provides a web-based graphical user interface (GUI) for
-    controlling a Tektronix MSO24 oscilloscope remotely. It allows engineers
+    controlling a DIGANTARA Tektronix MSO24 oscilloscope remotely. It allows engineers
     to configure the oscilloscope, capture data, and analyze signals through
     a web browser instead of manually operating the physical instrument.
 
@@ -63,7 +63,8 @@ import numpy as np          # Numerical computing library - handles arrays and m
 
 # --- MATPLOTLIB CONFIGURATION ---
 # These settings optimize plotting performance when handling large datasets
-plt.rcParams['agg.path.chunksize'] = 10000      # Process 10,000 points at a time
+plt.rcParams['agg.path.chunksize'] = 20000      # Process 20,000 points at a time
+plt.rcParams['path.simplify'] = True            # Enable path simplification
 plt.rcParams['path.simplify_threshold'] = 0.5   # Simplify complex paths to reduce file size
 
 # =============================================================================
@@ -120,30 +121,30 @@ TRIGGER_SLOPE_MAP = {
 AFG_FUNCTION_MAP = {
     # -------------------------------------------------------------------------
     # STANDARD WAVEFORMS - Basic signal types
+    # Per MSO24 Programmer Manual: AFG:FUNCtion command
     # -------------------------------------------------------------------------
     "Sine": "SINE",          # Sinusoidal wave (smooth periodic AC wave)
-    "Square": "SQUARE",      # Square wave (alternates between high/low, sharp transitions)
-    "Pulse": "PULSE",        # Pulse wave (short HIGH periods with long LOW)
-    "Ramp": "RAMP",          # Ramp/Triangle wave (linear rise, sharp fall - sawtooth)
-    "Triangle": "TRIANGLE",  # Triangle wave (symmetric linear rise and fall)
+    "Square": "SQUare",      # Square wave (alternates between high/low, sharp transitions)
+    "Pulse": "PULSe",        # Pulse wave (short HIGH periods with long LOW)
+    "Ramp": "RAMP",          # Ramp/Sawtooth wave (linear rise, sharp fall)
     "DC": "DC",              # Direct current (constant voltage level)
-    "Noise": "NOISE",        # Random noise signal (white noise)
+    "Noise": "NOISe",        # Random noise signal (white noise)
 
     # -------------------------------------------------------------------------
     # SPECIALIZED MATHEMATICAL WAVEFORMS
     # -------------------------------------------------------------------------
     "Sinc": "SINC",          # Sin(x)/x function - used in signal processing, filtering
-    "Gaussian": "GAUSSIAN",  # Gaussian (bell curve) - normal distribution shape
-    "Lorentz": "LORENTZ",    # Lorentzian function - physics/spectroscopy applications
-    "ExpRise": "ERISE",      # Exponential rise - capacitor charging curve
-    "ExpFall": "EFALL",      # Exponential fall/decay - capacitor discharging
-    "Haversine": "HAVERSINE",# Haversine function - raised cosine, smooth transitions
-    "Cardiac": "CARDIAC",    # Cardiac waveform - simulates heartbeat ECG signal
+    "Gaussian": "GAUSsian",  # Gaussian (bell curve) - normal distribution shape
+    "Lorentz": "LORENtz",    # Lorentzian function - physics/spectroscopy applications
+    "ExpRise": "ERISe",      # Exponential rise - capacitor charging curve
+    "ExpFall": "EDECAy",     # Exponential decay - capacitor discharging (SCPI: EDECAy)
+    "Haversine": "HAVERSINe",# Haversine function - raised cosine, smooth transitions
+    "Cardiac": "CARDIac",    # Cardiac waveform - simulates heartbeat ECG signal
 
     # -------------------------------------------------------------------------
     # ARBITRARY WAVEFORM
     # -------------------------------------------------------------------------
-    "Arbitrary": "ARB",      # User-defined arbitrary waveform (loaded from file/software)
+    "Arbitrary": "ARBitrary",# User-defined arbitrary waveform (loaded from file/software)
 }
 
 # TIME UNIT CONVERSION MULTIPLIERS
@@ -354,7 +355,7 @@ def format_measurement_value(meas_type: str, value: Optional[float]) -> str:
 class MSO24DataAcquisition:
     """
     =========================================================================
-    DATA ACQUISITION HANDLER FOR TEKTRONIX MSO24 OSCILLOSCOPE
+    DATA ACQUISITION HANDLER FOR DIGANTARA Tektronix MSO24 OSCILLOSCOPE
     =========================================================================
 
     PURPOSE:
@@ -406,19 +407,18 @@ class MSO24DataAcquisition:
         # Path.cwd() gets the current working directory
         # The "/" operator creates subdirectories
         self.default_data_dir = Path.cwd() / "data"            # For CSV files
-        self.default_graph_dir = Path.cwd() / "graphs"          # For plot images
         self.default_screenshot_dir = Path.cwd() / "screenshots"  # For scope screenshots
 
         # Store the threading lock for thread-safe operations
         # RLock = "Reentrant Lock" - allows same thread to acquire lock multiple times
         self.io_lock = io_lock
 
-    def acquire_waveform_data(self, channel: int, max_points: int = 50000) -> Optional[Dict[str, Any]]:
+    def acquire_waveform_data(self, channel: Union[int, str], max_points: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """
-        Capture waveform data from a specific oscilloscope channel.
+        Capture waveform data from a specific oscilloscope channel or math function.
 
         WHAT IT DOES:
-            Requests waveform data from the oscilloscope for a specific channel.
+            Requests waveform data from the oscilloscope for a specific channel or math function.
             The data includes voltage values over time, which represents the
             captured electrical signal.
 
@@ -439,8 +439,8 @@ class MSO24DataAcquisition:
             }
 
         PARAMETERS:
-            channel: Channel number to capture (1, 2, 3, or 4)
-            max_points: Maximum number of data points to capture (default 50,000)
+            channel: Channel number (1, 2, 3, or 4) or source name ("CH1", "MATH1", etc.)
+            max_points: Maximum number of data points to capture (None = use scope's record length)
                        More points = higher resolution but larger file size
 
         RETURNS:
@@ -462,7 +462,7 @@ class MSO24DataAcquisition:
                     waveform_data = self.scope.get_channel_data(
                         channel=channel,        # Which channel to read
                         start_point=1,          # Start from first data point
-                        stop_point=max_points   # End at max_points
+                        stop_point=max_points   # End at max_points (None = all data)
                     )
             else:
                 # No lock provided - proceed without thread protection
@@ -470,7 +470,7 @@ class MSO24DataAcquisition:
                 waveform_data = self.scope.get_channel_data(
                     channel=channel,
                     start_point=1,
-                    stop_point=max_points
+                    stop_point=max_points       # None = use scope's record length
                 )
 
             # Check if data was successfully acquired
@@ -498,7 +498,7 @@ class MSO24DataAcquisition:
             The file includes metadata (information about the capture) as comments.
 
         CSV FILE FORMAT:
-            # Tektronix MSO24 Waveform Data
+            # DIGANTARA Tektronix MSO24 Waveform Data
             # Channel: 1
             # Sample Points: 50000
             # X Increment: 0.000001 s
@@ -541,7 +541,7 @@ class MSO24DataAcquisition:
             # Create metadata lines (information about the measurement)
             # Lines starting with '#' are comments in CSV files
             metadata_lines = [
-                f"# Tektronix MSO24 Waveform Data",
+                f"# DIGANTARA Tektronix MSO24 Waveform Data",
                 f"# Channel: {data['channel']}",              # Which channel (1-4)
                 f"# Sample Points: {data['num_points']}",     # Number of data points
                 f"# X Increment: {data['x_increment']} s",    # Time between samples
@@ -569,62 +569,6 @@ class MSO24DataAcquisition:
             self._logger.error(f"Failed to save CSV: {e}")
             raise  # Re-raise exception to caller
 
-    def generate_waveform_plot(self, waveform_data: Dict[str, Any], title: str = "",
-                              directory: str = None) -> str:
-        """Generate professional waveform plot with proper scaling and annotations"""
-        try:
-            if directory:
-                Path(directory).mkdir(parents=True, exist_ok=True)
-
-            # Create figure with professional styling
-            plt.figure(figsize=(12, 8))
-            plt.style.use('default')
-
-            time_data = waveform_data['time'] * 1000  # Convert to ms for display
-            voltage_data = waveform_data['voltage']
-
-            plt.plot(time_data, voltage_data, 'b-', linewidth=0.8, alpha=0.9)
-            plt.grid(True, alpha=0.3)
-
-            # Set labels and title
-            plt.xlabel('Time (ms)', fontsize=12)
-            plt.ylabel('Voltage (V)', fontsize=12)
-
-            if title:
-                plt.title(f"Tektronix MSO24 - {title}", fontsize=14, fontweight='bold')
-            else:
-                plt.title(f"CH{waveform_data['channel']} Waveform - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                         fontsize=14, fontweight='bold')
-
-            # Add statistics text box
-            v_min = np.min(voltage_data)
-            v_max = np.max(voltage_data)
-            v_pp = v_max - v_min
-            v_rms = np.sqrt(np.mean(voltage_data**2))
-
-            stats_text = f'Min: {v_min:.3f}V\nMax: {v_max:.3f}V\nP-P: {v_pp:.3f}V\nRMS: {v_rms:.3f}V'
-            plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes,
-                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
-                    fontsize=10, fontfamily='monospace')
-
-            # Save plot
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            if directory:
-                filename = Path(directory) / f"MSO24_waveform_{timestamp}.png"
-            else:
-                filename = f"MSO24_waveform_{timestamp}.png"
-
-            plt.savefig(filename, dpi=300, bbox_inches='tight')
-            plt.close()
-
-            self._logger.info(f"Plot saved to: {filename}")
-            return str(filename)
-
-        except Exception as e:
-            plt.close()  # Ensure figure is closed on error
-            self._logger.error(f"Failed to generate plot: {e}")
-            raise
-
 # =============================================================================
 # MAIN GUI CLASS - APPLICATION CORE
 # =============================================================================
@@ -635,7 +579,7 @@ class MSO24DataAcquisition:
 class GradioMSO24GUI:
     """
     =========================================================================
-    MAIN APPLICATION CLASS - TEKTRONIX MSO24 WEB INTERFACE
+    MAIN APPLICATION CLASS - DIGANTARA Tektronix MSO24 WEB INTERFACE
     =========================================================================
 
     PURPOSE:
@@ -848,7 +792,7 @@ class GradioMSO24GUI:
 
     def connect_oscilloscope(self, visa_address: str) -> str:
         """
-        Establish connection to the Tektronix MSO24 oscilloscope.
+        Establish connection to the DIGANTARA Tektronix MSO24 oscilloscope.
 
         WHAT IT DOES:
             Connects to the physical oscilloscope hardware using the provided
@@ -873,7 +817,7 @@ class GradioMSO24GUI:
 
         RETURNS:
             String message for display to user:
-            - Success: "[CONNECTED] Tektronix MSO24 (S/N: 123456) Firmware: 1.0"
+            - Success: "[CONNECTED] DIGANTARA Tektronix MSO24 (S/N: 123456) Firmware: 1.0"
             - Failure: "[ERROR] Connection error: <error details>"
 
         EXAMPLE USAGE:
@@ -917,7 +861,7 @@ class GradioMSO24GUI:
                                f"(S/N: {info['serial_number']})\n"
                                f"Firmware: {info['firmware_version']}")
                     # If info retrieval failed, return basic success message
-                    return "[CONNECTED] Tektronix MSO24"
+                    return "[CONNECTED] DIGANTARA Tektronix MSO24"
 
                 # If connect() returned False, connection failed
                 return "[ERROR] Failed to connect to oscilloscope"
@@ -1192,7 +1136,7 @@ class GradioMSO24GUI:
 
     def configure_afg(self, function: str, frequency: float, amplitude: float,
                      offset: float, enable: bool) -> str:
-        """
+        r"""
         Configure the Arbitrary Function Generator (AFG) - Built-in Signal Generator.
 
         WHAT IS THE AFG?
@@ -1469,12 +1413,13 @@ class GradioMSO24GUI:
             return f"[ERROR] AFG: {str(e)}"
 
     def configure_math_function(self, function_num: int, operation: str, source1: str, source2: str) -> str:
-        """Configure math function"""
+        """Configure math function using ADVANCED mode with expressions (BASIC mode doesn't work properly)"""
         if not self.is_connected:
             return "[ERROR] Oscilloscope not connected"
 
         try:
-            # Map user-friendly operations to math expressions
+            # Map operations to math expressions for ADVANCED mode
+            # NOTE: BASIC mode FUNCtion command doesn't work - oscilloscope ignores it and always does CH1-CH2
             operation_map = {
                 "ADD": f"{source1}+{source2}",
                 "SUBTRACT": f"{source1}-{source2}",
@@ -1482,13 +1427,14 @@ class GradioMSO24GUI:
                 "DIVIDE": f"{source1}/{source2}"
             }
 
-            math_expression = operation_map.get(operation.upper())
+            operation_upper = operation.upper()
+            math_expression = operation_map.get(operation_upper)
 
             if not math_expression:
-                return f"[ERROR] Unknown operation: {operation}"
+                return f"[ERROR] Unknown operation: {operation}. Use ADD, SUBTRACT, MULTIPLY, or DIVIDE"
 
             with self.io_lock:
-                # Use ADVANCED type with the math expression
+                # Use ADVANCED mode with DEFine - this actually works unlike BASIC mode
                 success = self.oscilloscope.configure_math_function(
                     function_num=function_num,
                     operation="ADVANCED",
@@ -1498,7 +1444,7 @@ class GradioMSO24GUI:
                 )
 
             if success:
-                return f"[OK] Math{function_num}: {operation}({source1}, {source2})"
+                return f"[OK] Math{function_num}: {math_expression}"
             else:
                 return "[ERROR] Failed to configure math function"
 
@@ -1714,19 +1660,34 @@ class GradioMSO24GUI:
             result += "-" * 40 + "\n"
 
             for channel in selected_channels:
-                data = self.data_acquisition.acquire_waveform_data(channel, max_points=65000)
+                # Get all available data points (scope will use its configured record length)
+                data = self.data_acquisition.acquire_waveform_data(channel, max_points=None)
                 if data:
                     self.current_waveform_data[f"CH{channel}"] = data
                     points = len(data['voltage'])
-                    time_span = (data['time'][-1] - data['time'])  # ms
+                    time_span = (data['time'][-1] - data['time'][0])  # Time span in seconds
+                    time_start = data['time'][0]  # Start time (x_zero)
+                    time_end = data['time'][-1]    # End time
                     v_pp = np.max(data['voltage']) - np.min(data['voltage'])
-                    result += f"CH{channel}: {points} points, {time_span:.3f}ms span, {v_pp:.3f}V p-p\n"
+                    result += f"CH{channel}: {points} points, time: {time_start*1000:.3f}ms to {time_end*1000:.3f}ms (span: {time_span*1000:.3f}ms), {v_pp:.3f}V p-p\n"
                 else:
                     result += f"CH{channel}: [ERROR] Failed to acquire data\n"
 
-            # Note: Math function acquisition would require additional backend support
+            # Acquire math function data
             for math_num in selected_math:
-                result += f"MATH{math_num}: [INFO] Math function acquisition not yet implemented\n"
+                math_source = f"MATH{math_num}"
+                # Get all available data points (scope will use its configured record length)
+                data = self.data_acquisition.acquire_waveform_data(math_source, max_points=None)
+                if data:
+                    self.current_waveform_data[math_source] = data
+                    points = len(data['voltage'])
+                    time_span = (data['time'][-1] - data['time'][0])  # Time span in seconds
+                    time_start = data['time'][0]  # Start time (x_zero)
+                    time_end = data['time'][-1]    # End time
+                    v_pp = np.max(data['voltage']) - np.min(data['voltage'])
+                    result += f"{math_source}: {points} points, time: {time_start*1000:.3f}ms to {time_end*1000:.3f}ms (span: {time_span*1000:.3f}ms), {v_pp:.3f}V p-p\n"
+                else:
+                    result += f"{math_source}: [ERROR] Failed to acquire data (check if math function is configured and displayed)\n"
 
             return result
 
@@ -1758,27 +1719,6 @@ class GradioMSO24GUI:
             self._logger.error(f"CSV export error: {e}")
             return f"[ERROR] CSV export: {str(e)}"
 
-    def generate_plot(self, title: str = "") -> str:
-        """Generate plots for current waveform data"""
-        if not self.current_waveform_data:
-            return "[WARNING] No waveform data to plot"
-
-        try:
-            result = f"Plot Generation Results:\n"
-            result += "-" * 40 + "\n"
-
-            for channel, data in self.current_waveform_data.items():
-                plot_title = f"{title} - {channel}" if title else f"{channel} Waveform"
-                plot_path = self.data_acquisition.generate_waveform_plot(
-                    data, plot_title, self.save_locations['graphs']
-                )
-                result += f"{channel}: {plot_path}\n"
-
-            return result
-
-        except Exception as e:
-            self._logger.error(f"Plot generation error: {e}")
-            return f"[ERROR] Plot generation: {str(e)}"
 
     def run_full_automation(self, ch1: bool, ch2: bool, ch3: bool, ch4: bool,
                            math1: bool, math2: bool, math3: bool, math4: bool, title: str) -> str:
@@ -1803,13 +1743,8 @@ class GradioMSO24GUI:
             csv_result = self.export_csv()
             result += csv_result + "\n"
 
-            # Step 3: Generate plots
-            result += "Step 3: Plot Generation\n"
-            plot_result = self.generate_plot(title)
-            result += plot_result + "\n"
-
-            # Step 4: Capture screenshot
-            result += "Step 4: Screenshot Capture\n"
+            # Step 3: Capture screenshot
+            result += "Step 3: Screenshot Capture\n"
             screenshot_result = self.capture_screenshot()
             result += screenshot_result + "\n"
 
@@ -1972,7 +1907,7 @@ class GradioMSO24GUI:
         # Everything inside this "with" block becomes part of the interface
 
         with gr.Blocks(
-            title="Tektronix MSO24 Control",    # Browser tab/window title
+            title="DIGANTARA Tektronix MSO24 Control",    # Browser tab/window title
             theme=gr.themes.Soft(),              # Pre-built visual theme (soft colors, rounded corners)
             css=custom_css                       # Apply our custom CSS styles defined above
         ) as interface:
@@ -1984,7 +1919,7 @@ class GradioMSO24GUI:
             # The "#" symbol creates a large heading (H1 in HTML)
             # "**text**" makes text bold in Markdown format
 
-            gr.Markdown("# Tektronix MSO24 Oscilloscope Control Center")
+            gr.Markdown("# DIGANTARA Tektronix MSO24 Oscilloscope Control Center")
             gr.Markdown("**Professional oscilloscope automation interface with comprehensive control features**")
 
             # =================================================================
@@ -2071,10 +2006,10 @@ class GradioMSO24GUI:
                 gr.Markdown("### Channel Selection and Configuration")
 
                 with gr.Row():
-                    ch1_select = gr.Checkbox(label="Ch1", value=True)
-                    ch2_select = gr.Checkbox(label="Ch2", value=False)
-                    ch3_select = gr.Checkbox(label="Ch3", value=False)
-                    ch4_select = gr.Checkbox(label="Ch4", value=False)
+                    ch1_select = gr.Checkbox(label="Ch1", value=True, info="Yellow")
+                    ch2_select = gr.Checkbox(label="Ch2", value=False, info="Cyan")
+                    ch3_select = gr.Checkbox(label="Ch3", value=False, info="Magenta")
+                    ch4_select = gr.Checkbox(label="Ch4", value=False, info="Green")
 
                 with gr.Row():
                     v_scale = gr.Number(label="V/div", value=1.0, minimum=0.001, maximum=10.0)
@@ -2447,10 +2382,10 @@ class GradioMSO24GUI:
 
                 with gr.Row():
                     meas_result = gr.Textbox(
-                        label="Measurement Result", interactive=False, lines=3
+                        label="Measurement Result", interactive=False, lines=20
                     )
                     all_meas_result = gr.Textbox(
-                        label="All Measurements", interactive=False, lines=10
+                        label="All Measurements", interactive=False, lines=20
                     )
 
                 with gr.Row():
@@ -2510,14 +2445,6 @@ class GradioMSO24GUI:
                         data_browse_btn = gr.Button("Browse", scale=1)
 
                     with gr.Row():
-                        graphs_path = gr.Textbox(
-                            label="Graphs Directory",
-                            value=self.save_locations['graphs'],
-                            scale=3
-                        )
-                        graphs_browse_btn = gr.Button("Browse", scale=1)
-
-                    with gr.Row():
                         screenshots_path = gr.Textbox(
                             label="Screenshots Directory",
                             value=self.save_locations['screenshots'],
@@ -2555,17 +2482,6 @@ class GradioMSO24GUI:
 
                         return new_path, f"[OK] Data directory updated to: {new_path}"
 
-                    def browse_graphs_folder(current_path):
-                        new_path = self.browse_folder(current_path, "Graphs")
-                        self.save_locations['graphs'] = new_path
-
-                        # Update backend oscilloscope graph directory
-                        if self.is_connected and self.oscilloscope:
-                            with self.io_lock:
-                                self.oscilloscope.set_output_directories(graph_dir=new_path)
-
-                        return new_path, f"[OK] Graphs directory updated to: {new_path}"
-
                     def browse_screenshots_folder(current_path):
                         new_path = self.browse_folder(current_path, "Screenshots")
                         self.save_locations['screenshots'] = new_path
@@ -2580,7 +2496,7 @@ class GradioMSO24GUI:
                     # Connect path management buttons
                     update_paths_btn.click(
                         fn=update_paths,
-                        inputs=[data_path, graphs_path, screenshots_path],
+                        inputs=[data_path, screenshots_path],
                         outputs=[path_status]
                     )
 
@@ -2590,12 +2506,6 @@ class GradioMSO24GUI:
                         outputs=[data_path, path_status]
                     )
 
-                    graphs_browse_btn.click(
-                        fn=browse_graphs_folder,
-                        inputs=[graphs_path],
-                        outputs=[graphs_path, path_status]
-                    )
-
                     screenshots_browse_btn.click(
                         fn=browse_screenshots_folder,
                         inputs=[screenshots_path],
@@ -2603,6 +2513,7 @@ class GradioMSO24GUI:
                     )
 
                 gr.Markdown("---")
+                # Data Acquisition and Export section
                 gr.Markdown("### Data Acquisition and Export")
 
                 with gr.Row():
@@ -2617,12 +2528,6 @@ class GradioMSO24GUI:
                     op_math3 = gr.Checkbox(label="Math3", value=False)
                     op_math4 = gr.Checkbox(label="Math4", value=False)
 
-                export_save_location = gr.Textbox(
-                    label="Export Save Location",
-                    placeholder="Click Browse to select folder",
-                    interactive=False
-                )
-
                 plot_title_input = gr.Textbox(
                     label="Plot Title (optional)",
                     placeholder="Enter custom plot title"
@@ -2632,14 +2537,12 @@ class GradioMSO24GUI:
                     screenshot_btn = gr.Button("Capture Screenshot", variant="secondary")
                     acquire_btn = gr.Button("Acquire Data", variant="primary")
                     export_btn = gr.Button("Export CSV", variant="secondary")
-                    plot_btn = gr.Button("Generate Plot", variant="secondary")
 
                 with gr.Row():
                     full_auto_btn = gr.Button("Full Automation", variant="primary", scale=2)
 
-                operation_status = gr.Textbox(label="Operation Status", interactive=False, lines=12)
+                operation_status = gr.Textbox(label="Operation Status", interactive=False, lines=10)
 
-                # Connect data operation buttons
                 screenshot_btn.click(
                     fn=self.capture_screenshot,
                     inputs=[],
@@ -2655,12 +2558,6 @@ class GradioMSO24GUI:
                 export_btn.click(
                     fn=self.export_csv,
                     inputs=[],
-                    outputs=[operation_status]
-                )
-
-                plot_btn.click(
-                    fn=self.generate_plot,
-                    inputs=[plot_title_input],
                     outputs=[operation_status]
                 )
 
@@ -2826,7 +2723,7 @@ def main():
     # -------------------------------------------------------------------------
     # WELCOME BANNER - Display startup information
     # -------------------------------------------------------------------------
-    print("Tektronix MSO24 Oscilloscope Automation - Professional Gradio Interface")
+    print("DIGANTARA Tektronix MSO24 Oscilloscope Automation - Professional Gradio Interface")
     print("Professional oscilloscope control system with comprehensive features")
     print("=" * 80)  # Print 80 equals signs as a visual separator
     print("Starting web interface...")

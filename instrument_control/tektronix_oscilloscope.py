@@ -396,7 +396,8 @@ class TektronixMSO24:
 
     def configure_math_function(self, function_num: int, operation: str,
                                source1: str, source2: Optional[str] = None,
-                               math_expression: Optional[str] = None) -> bool:
+                               math_expression: Optional[str] = None,
+                               basic_function: Optional[str] = None) -> bool:
         """Configure math function using correct MSO24 SCPI commands.
 
         Args:
@@ -405,6 +406,7 @@ class TektronixMSO24:
             source1: First source
             source2: Second source (for basic math operations)
             math_expression: Expression for advanced math
+            basic_function: Function for BASIC mode (ADD, SUBtract, MULTiply, DIVide)
 
         Returns:
             bool: True if successful
@@ -423,22 +425,40 @@ class TektronixMSO24:
             return False
 
         try:
+            # Set math type first (send as separate command with delay)
+            self._scpi_wrapper.write(f"MATH:MATH{function_num}:TYPe {operation}")
+            time.sleep(0.1)
+
             if operation == "BASIC":
-                commands = f"MATH:MATH{function_num}:TYPe {operation};MATH:MATH{function_num}:SOUrce1 {source1}"
+                # For basic math, use source commands (sent separately)
+                self._scpi_wrapper.write(f"MATH:MATH{function_num}:SOUrce1 {source1}")
+                time.sleep(0.05)
+
                 if source2:
-                    commands += f";MATH:MATH{function_num}:SOUrce2 {source2}"
+                    self._scpi_wrapper.write(f"MATH:MATH{function_num}:SOUrce2 {source2}")
+                    time.sleep(0.05)
 
             elif operation == "ADVANCED":
-                expression = math_expression or (f"{source1}+{source2}" if source2 else source1)
-                commands = f"MATH:MATH{function_num}:TYPe {operation};MATH:MATH{function_num}:DEFine \"{expression}\""
-                self._logger.info(f"Math{function_num} expression: {expression}")
+                # For advanced math, use DEFine command with expression
+                if math_expression:
+                    expression = math_expression
+                elif source1 and source2:
+                    # Create basic expression if not provided
+                    expression = f"{source1}+{source2}"  # Default to addition
+                else:
+                    expression = source1  # Single source
+
+                # Send DEFine command
+                self._scpi_wrapper.write(f'MATH:MATH{function_num}:DEFine "{expression}"')
+                time.sleep(0.1)
+                self._logger.info(f"Math{function_num} defined with expression: {expression}")
 
             elif operation == "FFT":
-                commands = f"MATH:MATH{function_num}:TYPe {operation};MATH:MATH{function_num}:SOUrce1 {source1}"
+                # For FFT, set the source
+                self._scpi_wrapper.write(f"MATH:MATH{function_num}:SOUrce1 {source1}")
+                time.sleep(0.05)
 
-            self._scpi_wrapper.write(commands)
-            time.sleep(0.05)
-            self._logger.info(f"Math{function_num}: {operation}, Source1={source1}")
+            self._logger.info(f"Math{function_num} configured: Type={operation}, Source1={source1}")
             return True
 
         except Exception as e:
@@ -778,8 +798,23 @@ class TektronixMSO24:
             self._logger.error("Cannot configure AFG: not connected")
             return False
 
-        # Validate parameters
-        valid_functions = ["SINE", "SQUARE", "RAMP", "PULSE", "NOISE", "DC"]
+        # Validate parameters - Per MSO24 Programmer Manual AFG:FUNCtion
+        # Accept both uppercase and mixed-case SCPI command formats
+        valid_functions = [
+            "SINE", "SQUARE", "SQU", "SQUAE",  # SINE and SQUARE variants
+            "PULSE", "PULS",                    # PULSE variants
+            "RAMP",                             # RAMP
+            "NOISE", "NOIS",                    # NOISE variants
+            "DC",                               # DC
+            "SINC",                             # SINC (Sin(x)/x)
+            "GAUSSIAN", "GAUS",                 # GAUSSIAN variants
+            "LORENTZ", "LOREN",                 # LORENTZ variants
+            "ERISE", "ERIS",                    # Exponential Rise variants
+            "EDECAY", "EDECA", "EFALL",         # Exponential Decay variants (note: EFALL maps to EDECAY)
+            "HAVERSINE", "HAVERSIN",            # HAVERSINE variants
+            "CARDIAC", "CARDIA",                # CARDIAC variants
+            "ARBITRARY", "ARB"                  # ARBITRARY variants
+        ]
         if function.upper() not in valid_functions:
             self._logger.error(f"Invalid function: {function}. Must be one of {valid_functions}")
             return False
@@ -968,7 +1003,7 @@ class TektronixMSO24:
         """Query channel configuration"""
         if not self.is_connected:
             return None
-        if not (1 <= channel <= self.max_channels):
+        if not (1 <= channel <= self.MAX_CHANNELS):
             return None
 
         try:
