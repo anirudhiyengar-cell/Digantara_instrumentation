@@ -17,10 +17,44 @@ __license__ = "MIT"
 __description__ = "Professional-grade instrument control library for laboratory automation"
 
 # Import main instrument control classes for convenient access
-from .keithley_power_supply import KeithleyPowerSupply, KeithleyPowerSupplyError
-from .keithley_dmm import KeithleyDMM6500, KeithleyDMM6500Error, MeasurementFunction
-from .keysight_oscilloscope import KeysightDSOX6004A, KeysightDSOX6004AError
-from .tektronix_oscilloscope import TektronixMSO24, TektronixMSO24Error
+# Note: Lazy imports to avoid loading all modules when only one is needed
+def __getattr__(name):
+    """Lazy import of instrument modules to avoid loading everything at once."""
+    if name in ["KeithleyPowerSupply", "KeithleyPowerSupplyError"]:
+        from .keithley_power_supply import KeithleyPowerSupply, KeithleyPowerSupplyError
+        return KeithleyPowerSupply if name == "KeithleyPowerSupply" else KeithleyPowerSupplyError
+
+    elif name in ["KeithleyDMM6500", "KeithleyDMM6500Error", "MeasurementFunction"]:
+        from .keithley_dmm import KeithleyDMM6500, KeithleyDMM6500Error, MeasurementFunction
+        if name == "KeithleyDMM6500":
+            return KeithleyDMM6500
+        elif name == "KeithleyDMM6500Error":
+            return KeithleyDMM6500Error
+        else:
+            return MeasurementFunction
+
+    elif name in ["Keithley2380", "Keithley2380Error"]:
+        from .keithley_load import Keithley2380, Keithley2380Error
+        return Keithley2380 if name == "Keithley2380" else Keithley2380Error
+
+    elif name in ["KeysightDSOX6004A", "KeysightDSOX6004AError"]:
+        from .keysight_oscilloscope import KeysightDSOX6004A, KeysightDSOX6004AError
+        return KeysightDSOX6004A if name == "KeysightDSOX6004A" else KeysightDSOX6004AError
+
+    elif name in ["TektronixMSO24", "TektronixMSO24Error"]:
+        from .tektronix_oscilloscope import TektronixMSO24, TektronixMSO24Error
+        return TektronixMSO24 if name == "TektronixMSO24" else TektronixMSO24Error
+
+    elif name in ["scan_and_identify_instruments", "list_available_instruments", "classify_instrument_type"]:
+        from .scpi_wrapper import scan_and_identify_instruments, list_available_instruments, classify_instrument_type
+        if name == "scan_and_identify_instruments":
+            return scan_and_identify_instruments
+        elif name == "list_available_instruments":
+            return list_available_instruments
+        else:
+            return classify_instrument_type
+
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 __all__ = [
     # Version information
@@ -34,6 +68,10 @@ __all__ = [
     "KeithleyPowerSupply",
     "KeithleyPowerSupplyError",
 
+    # Keithley Electronic Load classes
+    "Keithley2380",
+    "Keithley2380Error",
+
     # Keithley Multimeter classes
     "KeithleyDMM6500",
     "KeithleyDMM6500Error",
@@ -46,6 +84,11 @@ __all__ = [
     # Tektronix Oscilloscope classes
     "TektronixMSO24",
     "TektronixMSO24Error",
+
+    # Auto-detection utilities
+    "scan_and_identify_instruments",
+    "list_available_instruments",
+    "classify_instrument_type",
 ]
 
 # Library information
