@@ -16,10 +16,11 @@ A comprehensive web-based automation framework providing unified control of prec
 ## Recent Updates
 
 **Latest Version Features:**
+- **Automatic VISA Instrument Detection**: Integrated auto-discovery system for connected instruments with intelligent classification and one-click connection
 - **Tektronix MSO24 Oscilloscope Support**: Full integration with Tektronix MSO24 series oscilloscopes
 - **Continuous Trigger Capture**: Automated long-term oscilloscope trigger event monitoring
 - **Individual Functionality Modules**: Specialized modules for specific measurement tasks
-- **Enhanced Documentation**: Added INSTALLATION.md, QUICK_START.md, USAGE_WORKFLOWS.md, and DOCUMENTATION_INDEX.md
+- **Enhanced Documentation**: Added INSTALLATION.md, QUICK_START.md, USAGE_WORKFLOWS.md, AUTO_DETECTION_GUIDE.md, and DOCUMENTATION_INDEX.md
 - **Reorganized File Structure**: Improved organization of scripts with categorized subdirectories
 - **SciPy Integration**: Added scientific computing capabilities for advanced analysis
 
@@ -70,6 +71,7 @@ The Digantara Instrumentation Control Suite eliminates the complexity of laborat
 |----------|-------|--------------|-----------|
 | **Power Supply** | Keithley 2230-30-1 | 3-channel programmable DC PSU<br>30V/3A per channel<br>Waveform generation (Sine, Square, Triangle, Ramp) | USB/VISA |
 | **Digital Multimeter** | Keithley DMM6500<br>Keithley DMM7510 | 6.5/7.5-digit precision DMM<br>DC/AC V/I, 2W/4W resistance<br>Capacitance, frequency, temperature | USB/LAN/VISA |
+| **Electronic Load** | Keithley 2380 Series | Programmable DC electronic load<br>CC/CV/CR/CP operation modes<br>120W/240W power ratings<br>Battery discharge testing | USB/GPIB/VISA |
 | **Oscilloscope** | Keysight DSOX6004A<br>Tektronix MSO24 | Keysight: 4-channel mixed signal scope, 1 GHz bandwidth, 20 GSa/s<br>Tektronix: MSO24 series with advanced triggering and analysis | USB/LAN/VISA |
 
 ### Measurement Specifications
@@ -87,6 +89,14 @@ The Digantara Instrumentation Control Suite eliminates the complexity of laborat
 - **DC/AC Current**: 1nA to 10A
 - **Resistance**: 1mΩ to 100MΩ (2-wire/4-wire)
 - **Additional**: Capacitance, frequency, temperature (thermocouple/RTD)
+
+#### Keithley Electronic Load (2380 Series)
+- **Voltage Range**: 0-60V or 0-150V (model dependent)
+- **Current Range**: 0-30A or 0-60A (model dependent)
+- **Power**: 120W (2380-120-60) or 240W (2380-240-60)
+- **Operation Modes**: CC (Constant Current), CV (Constant Voltage), CR (Constant Resistance), CP (Constant Power)
+- **Applications**: Battery discharge testing, power supply characterization, LED driver testing
+- **Features**: Automatic detection support, programmable protection limits, transient operations
 
 #### Keysight Oscilloscope (DSOX6004A)
 - **Bandwidth**: 1 GHz (4 analog channels)
@@ -109,6 +119,7 @@ The Digantara Instrumentation Control Suite eliminates the complexity of laborat
 ### Unified Control Interface
 
 - **Multi-Instrument Dashboard**: Single tabbed interface for all connected instruments
+- **Automatic Instrument Discovery**: One-click scanning identifies all connected VISA instruments with intelligent type classification
 - **Real-Time Status**: Live connection monitoring and instrument state display
 - **Responsive Design**: Optimized for desktop and tablet browsers
 - **Network Access**: Share instrument access across your local network
@@ -220,6 +231,11 @@ python scripts\keithley\keithley_PSU_gradio_automation.py
 Digital Multimeter:
 ```bash
 python scripts\keithley\keithley_dmm_gradio_automation.py
+```
+
+Electronic Load:
+```bash
+python scripts\keithley\keithley_load_gradio_gui.py
 ```
 
 Oscilloscope (Keysight):
@@ -391,11 +407,19 @@ The Keithley 2230-30-1 power supply interface provides complete control over thr
 
 **1. Connect to Instrument**
 
-- **VISA Address Field**: Enter instrument address or use auto-detect
+**Option A: Automatic Detection (Recommended)**
+- Click **"Scan for Instruments"** button
+- Select your power supply from the dropdown menu
+- VISA address auto-populates
+- Click **"Connect"** button
+
+**Option B: Manual Entry**
+- **VISA Address Field**: Enter instrument address manually
   - Format: `USB0::0x05E6::0x2230::[SERIAL]::INSTR`
   - Example: `USB0::0x05E6::0x2230::805224014806770001::INSTR`
 - Click **"Connect"** button
-- Connection status will display green checkmark when successful
+
+Connection status will display when successful
 
 **2. Configure Channel Output**
 
@@ -512,9 +536,17 @@ The Keithley DMM6500/7510 interface provides precision measurement capabilities 
 
 **1. Connect to Instrument**
 
+**Option A: Automatic Detection (Recommended)**
+- Click **"Scan for Instruments"** button
+- Select your DMM from the dropdown menu
+- VISA address auto-populates
+- Click **"Connect"**
+
+**Option B: Manual Entry**
 - Enter VISA address (format: `USB0::0x05E6::0x6500::[SERIAL]::INSTR`)
 - Click **"Connect"**
-- Instrument model and firmware version display upon successful connection
+
+Instrument model and firmware version display upon successful connection
 
 **2. Configure Measurement**
 
@@ -602,6 +634,59 @@ For accurate low-resistance measurements (<100Ω), use 4-wire technique:
 
 ---
 
+### Electronic Load Operation
+
+The Keithley 2380 series electronic load interface provides programmable DC load testing capabilities for battery discharge testing, power supply characterization, and device validation.
+
+#### Basic Electronic Load Workflow
+
+**1. Connect to Instrument**
+
+**Option A: Automatic Detection (Recommended)**
+- Click **"Scan for Instruments"** button
+- Select your electronic load from the dropdown menu
+- VISA address auto-populates
+- Click **"Connect"**
+
+**Option B: Manual Entry**
+- Enter VISA address (format: `USB0::0x05E6::0x2380::[SERIAL]::INSTR`)
+- Click **"Connect"**
+
+Instrument model and specifications display upon successful connection
+
+**2. Configure Operation Mode**
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **CC (Constant Current)** | Load draws fixed current | Battery discharge at constant rate |
+| **CV (Constant Voltage)** | Load maintains fixed voltage | Voltage regulation testing |
+| **CR (Constant Resistance)** | Load simulates fixed resistance | Resistive load simulation |
+| **CP (Constant Power)** | Load draws constant power | Power supply stress testing |
+
+**3. Set Protection Limits**
+
+Configure safety limits before enabling load:
+- **OVP (Over-Voltage Protection)**: Maximum input voltage
+- **OCP (Over-Current Protection)**: Maximum current draw
+- **OPP (Over-Power Protection)**: Maximum power dissipation
+- **OTP (Over-Temperature Protection)**: Thermal shutdown limit
+
+**4. Enable Load**
+
+- Click **"Input ON"** to enable load operation
+- Monitor real-time voltage, current, and power readings
+- Use **"Input OFF"** or **"EMERGENCY STOP"** to disable
+
+**5. Battery Discharge Testing**
+
+For automated battery discharge testing:
+- Set CC mode with desired discharge current
+- Configure voltage cutoff threshold
+- Enable continuous measurement logging
+- Export discharge curve data to CSV
+
+---
+
 ### Oscilloscope Operation
 
 The Keysight DSOX6004A interface provides waveform capture, analysis, and screenshot capabilities.
@@ -610,11 +695,18 @@ The Keysight DSOX6004A interface provides waveform capture, analysis, and screen
 
 **1. Connect to Instrument**
 
-- **Connection Type**: Choose USB or LAN
-  - USB: Enter VISA address (`USB0::0x0957::...::INSTR`)
-  - LAN: Enter IP address (e.g., `192.168.128.175`)
+**Option A: Automatic Detection (Recommended for USB)**
+- Click **"Scan for Instruments"** button
+- Select your oscilloscope from the dropdown menu
+- VISA address auto-populates
 - Click **"Connect"**
-- Instrument ID displays upon successful connection
+
+**Option B: Manual Entry**
+- **USB Connection**: Enter VISA address (`USB0::0x0957::...::INSTR`)
+- **LAN Connection**: Enter IP address (e.g., `192.168.128.175`)
+- Click **"Connect"**
+
+Instrument ID displays upon successful connection
 
 **2. Configure Channels**
 
@@ -1475,6 +1567,10 @@ interface.launch(
   - [DMM6500 Reference](https://www.tek.com/en/products/keithley/digital-multimeter/dmm6500)
   - [DMM7510 Reference](https://www.tek.com/en/products/keithley/digital-multimeter/dmm7510)
 
+- **Keithley 2380 Electronic Load**
+  - [User Manual](https://www.tek.com/en/products/keithley/dc-electronic-loads/series-2380)
+  - [Programming Reference](https://www.tek.com/en/products/keithley/dc-electronic-loads/series-2380)
+
 - **Keysight DSOX6004A**
   - [User Guide](https://www.keysight.com/us/en/product/DSOX6004A)
   - [Programming Guide](https://www.keysight.com/us/en/product/DSOX6004A)
@@ -1488,6 +1584,16 @@ interface.launch(
 - [PyVISA Documentation](https://pyvisa.readthedocs.io/)
 - [Gradio Documentation](https://www.gradio.app/docs)
 - [SCPI Standard](https://www.ivifoundation.org/specifications/)
+
+**Project Documentation:**
+
+- [AUTO_DETECTION_GUIDE.md](AUTO_DETECTION_GUIDE.md) - Comprehensive guide to automatic instrument detection
+- [scripts/keithley/LOAD_AUTO_DETECTION.md](scripts/keithley/LOAD_AUTO_DETECTION.md) - Electronic Load auto-detection guide
+- [test_auto_detection.py](test_auto_detection.py) - Test script for verifying auto-detection functionality
+- [INSTALLATION.md](INSTALLATION.md) - Detailed installation instructions
+- [QUICK_START.md](QUICK_START.md) - Quick start guide for first-time users
+- [USAGE_WORKFLOWS.md](USAGE_WORKFLOWS.md) - Common workflow examples
+- [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) - Complete documentation index
 
 ### Getting Help
 
