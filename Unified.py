@@ -289,6 +289,17 @@ try:
     )
 
     # ┌──────────────────────────────────────────────────────────────────────┐
+    # │ AUTO-DETECTION UTILITIES FOR VISA INSTRUMENTS                         │
+    # └──────────────────────────────────────────────────────────────────────┘
+    from instrument_control.scpi_wrapper import (
+        scan_and_identify_instruments,  # Scans VISA bus and identifies instruments
+                                        # Returns: List of dicts with manufacturer,
+                                        #          model, serial, visa_address, type
+        list_available_instruments      # Lists all VISA resource addresses
+                                        # Returns: List of VISA address strings
+    )
+
+    # ┌──────────────────────────────────────────────────────────────────────┐
     # │ KEITHLEY 2230-30-1 TRIPLE CHANNEL POWER SUPPLY DRIVER               │
     # └──────────────────────────────────────────────────────────────────────┘
     from instrument_control.keithley_power_supply import (
@@ -5334,8 +5345,20 @@ class UnifiedInstrumentControl:
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### Instrument Connection")
+
+                # Auto-detection section
+                with gr.Row():
+                    dmm_scan_btn = gr.Button("Scan for Instruments", variant="secondary", size="sm")
+
+                dmm_instrument_dropdown = gr.Dropdown(
+                    label="Detected Instruments (DMM)",
+                    choices=[],
+                    interactive=True,
+                    info="Select from auto-detected instruments or enter manually below"
+                )
+
                 dmm_visa_address = gr.Textbox(
-                    label="VISA Address",
+                    label="VISA Address (Manual Entry)",
                     value=self.dmm_controller.default_settings['visa_address'],
                     placeholder="USB0::0x05E6::0x6500::04561287::INSTR"
                 )
@@ -5345,7 +5368,7 @@ class UnifiedInstrumentControl:
                     minimum=1000,
                     maximum=60000
                 )
-                
+
                 with gr.Row():
                     dmm_connect_btn = gr.Button("Connect", variant="primary")
                     dmm_disconnect_btn = gr.Button("Disconnect", variant="secondary")
@@ -5551,6 +5574,43 @@ class UnifiedInstrumentControl:
             outputs=[dmm_measurement_range]
         )
 
+        # Auto-detection: Scan for instruments and populate dropdown
+        def scan_for_dmm_instruments():
+            """Scan for DMM instruments and return choices for dropdown"""
+            try:
+                instruments = scan_and_identify_instruments(timeout_ms=5000)
+                # Filter for DMM instruments only
+                dmm_instruments = [instr for instr in instruments if instr['instrument_type'] == 'dmm']
+
+                if not dmm_instruments:
+                    return gr.Dropdown(choices=[], value=None), "No DMM instruments detected. Check connections."
+
+                # Create choices as tuples (display_name, visa_address)
+                choices = [(instr['display_name'], instr['visa_address']) for instr in dmm_instruments]
+
+                return gr.Dropdown(choices=choices, value=None), f"Found {len(dmm_instruments)} DMM instrument(s)"
+            except Exception as e:
+                return gr.Dropdown(choices=[], value=None), f"Scan failed: {str(e)}"
+
+        # Auto-detection: When instrument selected from dropdown, update VISA address field
+        def update_dmm_visa_from_dropdown(selected_visa):
+            """Update the VISA address textbox when instrument is selected from dropdown"""
+            if selected_visa:
+                return selected_visa
+            return ""
+
+        dmm_scan_btn.click(
+            fn=scan_for_dmm_instruments,
+            inputs=[],
+            outputs=[dmm_instrument_dropdown, dmm_connection_status]
+        )
+
+        dmm_instrument_dropdown.change(
+            fn=update_dmm_visa_from_dropdown,
+            inputs=[dmm_instrument_dropdown],
+            outputs=[dmm_visa_address]
+        )
+
         dmm_connect_btn.click(
             self.dmm_controller.connect_instrument,
             inputs=[dmm_visa_address, dmm_timeout_ms],
@@ -5641,13 +5701,24 @@ class UnifiedInstrumentControl:
         """Create the Power Supply interface tab"""
         gr.Markdown("### Connection Settings")
         with gr.Group():
+            # Auto-detection section
+            with gr.Row():
+                psu_scan_btn = gr.Button("Scan for Instruments", variant="secondary", size="sm")
+
+            psu_instrument_dropdown = gr.Dropdown(
+                label="Detected Instruments (Power Supply)",
+                choices=[],
+                interactive=True,
+                info="Select from auto-detected instruments or enter manually below"
+            )
+
             with gr.Row():
                 psu_visa_addr = gr.Textbox(
-                    label="VISA Address",
+                    label="VISA Address (Manual Entry)",
                     value="USB0::0x05E6::0x2230::805224014806770001::INSTR",
                     lines=1
                 )
-            
+
             with gr.Row():
                 psu_conn_btn = gr.Button("Connect", variant="primary", size="lg")
                 psu_disc_btn = gr.Button("Disconnect", variant="stop", size="lg")
@@ -6460,6 +6531,30 @@ class UnifiedInstrumentControl:
                 outputs=[psu_waveform_status, psu_activity_log_display]
             )
         
+        # Auto-detection handlers for PSU
+        def scan_for_psu_instruments():
+            """Scan for Power Supply instruments and return choices for dropdown"""
+            try:
+                instruments = scan_and_identify_instruments(timeout_ms=5000)
+                # Filter for power supply instruments only
+                psu_instruments = [instr for instr in instruments if instr['instrument_type'] == 'power_supply']
+
+                if not psu_instruments:
+                    return gr.Dropdown(choices=[], value=None), "No Power Supply instruments detected. Check connections.", self.psu_controller.activity_log
+
+                # Create choices as tuples (display_name, visa_address)
+                choices = [(instr['display_name'], instr['visa_address']) for instr in psu_instruments]
+
+                return gr.Dropdown(choices=choices, value=None), f"Found {len(psu_instruments)} Power Supply instrument(s)", self.psu_controller.activity_log
+            except Exception as e:
+                return gr.Dropdown(choices=[], value=None), f"Scan failed: {str(e)}", self.psu_controller.activity_log
+
+        def update_psu_visa_from_dropdown(selected_visa):
+            """Update the VISA address textbox when instrument is selected from dropdown"""
+            if selected_visa:
+                return selected_visa
+            return ""
+
         # Connection handlers
         def psu_handle_connect(visa_addr_val):
             """Handle connection button click"""
@@ -6475,22 +6570,35 @@ class UnifiedInstrumentControl:
                     break
             status = "Connected" if self.psu_controller.is_connected else "Disconnected"
             return status, self.psu_controller.activity_log
-        
+
         def psu_handle_disconnect():
             """Handle disconnect button click"""
             self.psu_controller.disconnect_power_supply()
             return "Disconnected", self.psu_controller.activity_log
-        
+
         def psu_handle_test():
             """Handle test connection button click"""
             result = self.psu_controller.test_connection()
             return result, self.psu_controller.activity_log
-        
+
         def psu_handle_emergency():
             """Handle emergency stop button click"""
             result = self.psu_controller.emergency_stop()
             return result, self.psu_controller.activity_log
-        
+
+        # Register auto-detection handlers
+        psu_scan_btn.click(
+            fn=scan_for_psu_instruments,
+            inputs=[],
+            outputs=[psu_instrument_dropdown, psu_conn_status, psu_activity_log_display]
+        )
+
+        psu_instrument_dropdown.change(
+            fn=update_psu_visa_from_dropdown,
+            inputs=[psu_instrument_dropdown],
+            outputs=[psu_visa_addr]
+        )
+
         # Register connection handlers
         psu_conn_btn.click(
             fn=psu_handle_connect,
@@ -6519,15 +6627,26 @@ class UnifiedInstrumentControl:
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("### Instrument Connection")
+
+                    # Auto-detection section
+                    osc_scan_btn = gr.Button("Scan for Instruments", variant="secondary", size="sm")
+
+                    osc_instrument_dropdown = gr.Dropdown(
+                        label="Detected Instruments (Oscilloscope)",
+                        choices=[],
+                        interactive=True,
+                        info="Select from auto-detected instruments or enter manually below"
+                    )
+
                     osc_visa_address = gr.Textbox(
-                        label="VISA Address",
+                        label="VISA Address (Manual Entry)",
                         value="USB0::0x0957::0x1780::MY65220169::INSTR",
                         scale=3
                     )
                     osc_connect_btn = gr.Button("Connect", variant="primary", scale=1)
                     osc_disconnect_btn = gr.Button("Disconnect", variant="stop", scale=1)
                     osc_test_btn = gr.Button("Test", scale=1)
-                
+
                     osc_connection_status = gr.Textbox(label="Status", value="Disconnected", interactive=False)
                     osc_instrument_info = gr.Textbox(label="Instrument Information", interactive=False)
 
@@ -6984,6 +7103,43 @@ class UnifiedInstrumentControl:
 
             osc_operation_status = gr.Textbox(label="Operation Status", interactive=False, lines=10)
         
+        # Auto-detection handlers for Oscilloscope
+        def scan_for_osc_instruments():
+            """Scan for Oscilloscope instruments and return choices for dropdown"""
+            try:
+                instruments = scan_and_identify_instruments(timeout_ms=5000)
+                # Filter for oscilloscope instruments only
+                osc_instruments = [instr for instr in instruments if instr['instrument_type'] == 'oscilloscope']
+
+                if not osc_instruments:
+                    return gr.Dropdown(choices=[], value=None), "Disconnected", "No Oscilloscope instruments detected. Check connections."
+
+                # Create choices as tuples (display_name, visa_address)
+                choices = [(instr['display_name'], instr['visa_address']) for instr in osc_instruments]
+
+                return gr.Dropdown(choices=choices, value=None), "Disconnected", f"Found {len(osc_instruments)} Oscilloscope instrument(s)"
+            except Exception as e:
+                return gr.Dropdown(choices=[], value=None), "Disconnected", f"Scan failed: {str(e)}"
+
+        def update_osc_visa_from_dropdown(selected_visa):
+            """Update the VISA address textbox when instrument is selected from dropdown"""
+            if selected_visa:
+                return selected_visa
+            return ""
+
+        # Register auto-detection handlers
+        osc_scan_btn.click(
+            fn=scan_for_osc_instruments,
+            inputs=[],
+            outputs=[osc_instrument_dropdown, osc_connection_status, osc_instrument_info]
+        )
+
+        osc_instrument_dropdown.change(
+            fn=update_osc_visa_from_dropdown,
+            inputs=[osc_instrument_dropdown],
+            outputs=[osc_visa_address]
+        )
+
         # Connect UI events to controller methods
         osc_connect_btn.click(
             fn=self.oscilloscope_controller.connect_oscilloscope,
