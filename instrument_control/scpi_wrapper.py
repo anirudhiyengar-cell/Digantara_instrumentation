@@ -544,7 +544,7 @@ def test_scpi_wrapper(visa_address: str) -> bool:
 def list_available_instruments() -> list:
     """
     List all available VISA instruments
-    
+
     Returns:
         List of available VISA addresses
     """
@@ -556,6 +556,123 @@ def list_available_instruments() -> list:
     except Exception as e:
         print(f"Error listing instruments: {e}")
         return []
+
+
+def scan_and_identify_instruments(timeout_ms: int = 5000) -> list:
+    """
+    Scan for VISA instruments and identify them by querying *IDN?
+
+    Args:
+        timeout_ms: Timeout for each instrument query in milliseconds
+
+    Returns:
+        List of dictionaries containing instrument information:
+        [
+            {
+                'visa_address': str,
+                'manufacturer': str,
+                'model': str,
+                'serial_number': str,
+                'firmware': str,
+                'idn_string': str,
+                'instrument_type': str  # 'dmm', 'power_supply', 'oscilloscope', 'load', 'unknown'
+            },
+            ...
+        ]
+    """
+    identified_instruments = []
+
+    try:
+        # Get list of available VISA resources
+        rm = pyvisa.ResourceManager()
+        visa_addresses = rm.list_resources()
+
+        for visa_address in visa_addresses:
+            try:
+                # Attempt to open and query each instrument
+                instrument = rm.open_resource(visa_address)
+                instrument.timeout = timeout_ms
+                instrument.read_termination = '\n'
+                instrument.write_termination = '\n'
+
+                # Query instrument identification
+                idn_response = instrument.query("*IDN?").strip()
+
+                # Parse IDN response (typically: Manufacturer,Model,SerialNumber,Firmware)
+                parts = idn_response.split(',')
+
+                manufacturer = parts[0].strip() if len(parts) > 0 else "Unknown"
+                model = parts[1].strip() if len(parts) > 1 else "Unknown"
+                serial_number = parts[2].strip() if len(parts) > 2 else "Unknown"
+                firmware = parts[3].strip() if len(parts) > 3 else "Unknown"
+
+                # Identify instrument type based on model
+                instrument_type = classify_instrument_type(manufacturer, model)
+
+                identified_instruments.append({
+                    'visa_address': visa_address,
+                    'manufacturer': manufacturer,
+                    'model': model,
+                    'serial_number': serial_number,
+                    'firmware': firmware,
+                    'idn_string': idn_response,
+                    'instrument_type': instrument_type,
+                    'display_name': f"{manufacturer} {model} (S/N: {serial_number})"
+                })
+
+                instrument.close()
+
+            except Exception as e:
+                # If we can't query this instrument, skip it
+                print(f"Could not identify instrument at {visa_address}: {e}")
+                continue
+
+        rm.close()
+        return identified_instruments
+
+    except Exception as e:
+        print(f"Error scanning instruments: {e}")
+        return []
+
+
+def classify_instrument_type(manufacturer: str, model: str) -> str:
+    """
+    Classify instrument type based on manufacturer and model information.
+
+    Args:
+        manufacturer: Manufacturer name from *IDN? response
+        model: Model name from *IDN? response
+
+    Returns:
+        Instrument type: 'dmm', 'power_supply', 'oscilloscope', 'load', 'unknown'
+    """
+    manufacturer_lower = manufacturer.lower()
+    model_lower = model.lower()
+
+    # Digital Multimeters
+    if 'dmm' in model_lower or '6500' in model or '7510' in model:
+        return 'dmm'
+
+    # Power Supplies
+    if any(x in model for x in ['2230', '2231', '2280', '2260', '2268']):
+        return 'power_supply'
+
+    # Electronic Loads
+    if any(x in model for x in ['2380', '2382']):
+        return 'load'
+
+    # Oscilloscopes - Keysight
+    if 'keysight' in manufacturer_lower or 'agilent' in manufacturer_lower:
+        if any(x in model_lower for x in ['dso', 'mso', 'infiniivision', 'dsox']):
+            return 'oscilloscope'
+
+    # Oscilloscopes - Tektronix
+    if 'tektronix' in manufacturer_lower:
+        if any(x in model_lower for x in ['mso', 'dpo', 'tds', 'mdo']):
+            return 'oscilloscope'
+
+    # Default
+    return 'unknown'
 
 
 if __name__ == "__main__":
