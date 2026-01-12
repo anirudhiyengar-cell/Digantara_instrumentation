@@ -109,7 +109,12 @@ if str(script_dir) not in sys.path:
 
 try:
 
-    from instrument_control.keysight_oscilloscope import KeysightDSOX6004A, KeysightDSOX6004AError
+    from instrument_control.keysight_oscilloscope import (
+        KeysightDSOX6004A,
+        KeysightDSOX6004AError,
+        KeysightHD304MSO,
+        KeysightHD304MSOError
+    )
 
 except ImportError as e:
 
@@ -910,7 +915,7 @@ class GradioOscilloscopeGUI:
 
     # ========================================================================
 
-    def connect_oscilloscope(self, visa_address: str):
+    def connect_oscilloscope(self, visa_address: str, scope_model: str):
 
         """Establish VISA connection and query instrument identification"""
 
@@ -920,7 +925,11 @@ class GradioOscilloscopeGUI:
 
                 return "Error: VISA address is empty", "Disconnected"
 
-            self.oscilloscope = KeysightDSOX6004A(visa_address)
+            # Select appropriate oscilloscope class based on model
+            if "HD3" in scope_model or "HD304MSO" in scope_model:
+                self.oscilloscope = KeysightHD304MSO(visa_address)
+            else:  # Default to DSOX6004A
+                self.oscilloscope = KeysightDSOX6004A(visa_address)
 
             if self.oscilloscope.connect():
 
@@ -930,7 +939,9 @@ class GradioOscilloscopeGUI:
 
                 if info:
 
-                    info_text = f"Connected: {info['manufacturer']} {info['model']} | S/N: {info['serial_number']} | FW: {info['firmware_version']}"
+                    # Show resolution for HD3 scopes
+                    resolution_info = f" | Resolution: {info.get('resolution_bits', 8)}-bit" if 'resolution_bits' in info else ""
+                    info_text = f"Connected: {info['manufacturer']} {info['model']} | S/N: {info['serial_number']} | FW: {info['firmware_version']}{resolution_info}"
 
                     return info_text, "Connected"
 
@@ -2436,6 +2447,23 @@ class GradioOscilloscopeGUI:
 
                 with gr.Row():
 
+                    scope_model = gr.Dropdown(
+
+                        label="Oscilloscope Model",
+
+                        choices=[
+                            "DSOX6004A (6000 X-Series, 8-bit, 1 GHz)",
+                            "HD304MSO (HD3 Series, 14-bit, 200 MHz)"
+                        ],
+
+                        value="DSOX6004A (6000 X-Series, 8-bit, 1 GHz)",
+
+                        scale=2
+
+                    )
+
+                with gr.Row():
+
                     visa_address = gr.Textbox(
 
                         label="VISA Address",
@@ -2460,7 +2488,7 @@ class GradioOscilloscopeGUI:
 
                     fn=self.connect_oscilloscope,
 
-                    inputs=[visa_address],
+                    inputs=[visa_address, scope_model],
 
                     outputs=[instrument_info, connection_status]
 

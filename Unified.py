@@ -319,19 +319,24 @@ try:
     )
 
     # ┌──────────────────────────────────────────────────────────────────────┐
-    # │ KEYSIGHT DSOX6004A OSCILLOSCOPE DRIVER                               │
+    # │ KEYSIGHT OSCILLOSCOPE DRIVERS (DSOX6004A & HD304MSO)                │
     # └──────────────────────────────────────────────────────────────────────┘
     from instrument_control.keysight_oscilloscope import (
         KeysightDSOX6004A,          # Primary driver class for DSOX6004A scope
                                     # Provides: Waveform acquisition, triggering,
                                     #           measurements, math functions, setup mgmt
                                     # Capabilities: 4 analog channels, 1 GHz BW,
-                                    #               20 GSa/s, 4 Mpts memory
+                                    #               20 GSa/s, 16 Mpts memory, 8-bit
 
-        KeysightDSOX6004AError      # Custom exception for scope-specific errors
-                                    # Raised when: Timeout, trigger not armed,
-                                    #              invalid channel, acquisition failed
-                                    # Purpose: Detailed error reporting for debugging
+        KeysightDSOX6004AError,     # Custom exception for DSOX6004A errors
+
+        KeysightHD304MSO,           # Primary driver class for HD304MSO scope
+                                    # Inherits all DSOX6004A capabilities
+                                    # Enhanced specs: 14-bit ADC, 100 Mpts memory,
+                                    #                 16 digital channels, 2 counters
+                                    # Uses IDENTICAL SCPI commands as DSOX6004A
+
+        KeysightHD304MSOError       # Custom exception for HD304MSO errors
     )
 
     from instrument_control.scpi_wrapper import SCPIWrapper
@@ -4109,20 +4114,26 @@ class GradioOscilloscopeGUI:
             print(f"Cleanup error: {e}")
 
     # Connection management
-    def connect_oscilloscope(self, visa_address: str):
+    def connect_oscilloscope(self, visa_address: str, scope_model: str):
         """Establish VISA connection and query instrument identification"""
         try:
             if not visa_address:
                 return "Error: VISA address is empty", "Disconnected"
 
-            self.oscilloscope = KeysightDSOX6004A(visa_address)
+            # Select appropriate oscilloscope class based on model
+            if "HD3" in scope_model or "HD304MSO" in scope_model:
+                self.oscilloscope = KeysightHD304MSO(visa_address)
+            else:  # Default to DSOX6004A
+                self.oscilloscope = KeysightDSOX6004A(visa_address)
 
             if self.oscilloscope.connect():
                 self.data_acquisition = OscilloscopeDataAcquisition(self.oscilloscope, io_lock=self.io_lock)
 
                 info = self.oscilloscope.get_instrument_info()
                 if info:
-                    info_text = f"Connected: {info['manufacturer']} {info['model']} | S/N: {info['serial_number']} | FW: {info['firmware_version']}"
+                    # Show resolution for HD3 scopes
+                    resolution_info = f" | Resolution: {info.get('resolution_bits', 8)}-bit" if 'resolution_bits' in info else ""
+                    info_text = f"Connected: {info['manufacturer']} {info['model']} | S/N: {info['serial_number']} | FW: {info['firmware_version']}{resolution_info}"
                     return info_text, "Connected"
                 else:
                     return "Connected (no info available)", "Connected"
@@ -6638,6 +6649,16 @@ class UnifiedInstrumentControl:
                         info="Select from auto-detected instruments or enter manually below"
                     )
 
+                    osc_scope_model = gr.Dropdown(
+                        label="Oscilloscope Model",
+                        choices=[
+                            "DSOX6004A (6000 X-Series, 8-bit, 1 GHz)",
+                            "HD304MSO (HD3 Series, 14-bit, 200 MHz)"
+                        ],
+                        value="DSOX6004A (6000 X-Series, 8-bit, 1 GHz)",
+                        info="Select your oscilloscope model - both use identical SCPI commands"
+                    )
+
                     osc_visa_address = gr.Textbox(
                         label="VISA Address (Manual Entry)",
                         value="USB0::0x0957::0x1780::MY65220169::INSTR",
@@ -7143,7 +7164,7 @@ class UnifiedInstrumentControl:
         # Connect UI events to controller methods
         osc_connect_btn.click(
             fn=self.oscilloscope_controller.connect_oscilloscope,
-            inputs=[osc_visa_address],
+            inputs=[osc_visa_address, osc_scope_model],
             outputs=[osc_instrument_info, osc_connection_status]
         )
         
