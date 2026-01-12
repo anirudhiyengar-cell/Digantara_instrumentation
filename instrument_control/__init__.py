@@ -41,6 +41,10 @@ def __getattr__(name):
         from .keysight_oscilloscope import KeysightDSOX6004A, KeysightDSOX6004AError
         return KeysightDSOX6004A if name == "KeysightDSOX6004A" else KeysightDSOX6004AError
 
+    elif name in ["KeysightHD304MSO", "KeysightHD304MSOError"]:
+        from .keysight_oscilloscope import KeysightHD304MSO, KeysightHD304MSOError
+        return KeysightHD304MSO if name == "KeysightHD304MSO" else KeysightHD304MSOError
+
     elif name in ["TektronixMSO24", "TektronixMSO24Error"]:
         from .tektronix_oscilloscope import TektronixMSO24, TektronixMSO24Error
         return TektronixMSO24 if name == "TektronixMSO24" else TektronixMSO24Error
@@ -80,6 +84,8 @@ __all__ = [
     # Keysight Oscilloscope classes
     "KeysightDSOX6004A",
     "KeysightDSOX6004AError",
+    "KeysightHD304MSO",
+    "KeysightHD304MSOError",
 
     # Tektronix Oscilloscope classes
     "TektronixMSO24",
@@ -111,6 +117,7 @@ LIBRARY_INFO = {
         ],
         "oscilloscopes": [
             "Keysight DSOX6000 Series (DSOX6004A)",
+            "Keysight InfiniiVision HD3 Series (HD304MSO)",
             "Tektronix MSO2 Series (MSO24)"
         ]
     }
@@ -202,7 +209,7 @@ def check_dependencies() -> dict:
 def get_oscilloscope_comparison() -> dict:
     """
     Get comparison between supported oscilloscope models.
-    
+
     Returns:
         Dictionary comparing oscilloscope specifications and capabilities
     """
@@ -210,10 +217,12 @@ def get_oscilloscope_comparison() -> dict:
         "keysight_dsox6004a": {
             "manufacturer": "Keysight Technologies",
             "model": "DSOX6004A",
+            "series": "InfiniiVision 6000 X-Series",
             "bandwidth": "1 GHz",
             "channels": 4,
             "sample_rate": "20 GS/s",
             "memory_depth": "16 Mpts",
+            "resolution": "8-bit",
             "function_generators": 2,
             "digital_channels": 0,
             "key_features": [
@@ -224,13 +233,35 @@ def get_oscilloscope_comparison() -> dict:
                 "High sample rate"
             ]
         },
+        "keysight_hd304mso": {
+            "manufacturer": "Keysight Technologies",
+            "model": "HD304MSO",
+            "series": "InfiniiVision HD3 Series",
+            "bandwidth": "200 MHz (upgradeable to 1 GHz)",
+            "channels": 4,
+            "sample_rate": "2.5 GS/s",
+            "memory_depth": "100 Mpts",
+            "resolution": "14-bit",
+            "function_generators": 2,
+            "digital_channels": 16,
+            "key_features": [
+                "14-bit ADC resolution (vs 8-bit)",
+                "Mixed signal capability (16 digital channels)",
+                "Large memory depth (100 Mpts)",
+                "Up to 4 graticules display",
+                "Dual frequency counters",
+                "1.3M waveforms/sec update rate"
+            ]
+        },
         "tektronix_mso24": {
             "manufacturer": "Tektronix",
             "model": "MSO24",
+            "series": "2-Series MSO",
             "bandwidth": "200 MHz",
             "channels": 4,
-            "sample_rate": "2.5 GS/s", 
+            "sample_rate": "2.5 GS/s",
             "memory_depth": "62.5 Mpts",
+            "resolution": "8-bit",
             "function_generators": 1,
             "digital_channels": 16,
             "key_features": [
@@ -247,7 +278,7 @@ def get_oscilloscope_comparison() -> dict:
 def get_recommended_usage() -> dict:
     """
     Get recommended usage scenarios for each oscilloscope.
-    
+
     Returns:
         Dictionary with recommended applications for each model
     """
@@ -259,9 +290,17 @@ def get_recommended_usage() -> dict:
             "Advanced signal generation requirements",
             "Applications requiring maximum bandwidth"
         ],
+        "keysight_hd304mso": [
+            "High-resolution measurements (14-bit ADC)",
+            "Mixed signal debugging (analog + digital)",
+            "Power integrity analysis",
+            "Applications requiring high vertical resolution",
+            "Long memory depth captures (100 Mpts)",
+            "Multi-channel synchronized analysis (4 graticules)"
+        ],
         "tektronix_mso24": [
             "Mixed signal debugging (analog + digital)",
-            "Embedded system development", 
+            "Embedded system development",
             "Long duration signal capture",
             "Educational and training applications",
             "Cost-effective professional testing",
@@ -274,27 +313,29 @@ def get_recommended_usage() -> dict:
 def create_oscilloscope(model: str, visa_address: str, **kwargs):
     """
     Factory function to create oscilloscope instances.
-    
+
     Args:
-        model: Oscilloscope model ("keysight_dsox6004a" or "tektronix_mso24")
+        model: Oscilloscope model ("keysight_dsox6004a", "keysight_hd304mso", or "tektronix_mso24")
         visa_address: VISA address for the instrument
         **kwargs: Additional arguments passed to the constructor
-        
+
     Returns:
         Oscilloscope instance
-        
+
     Raises:
         ValueError: If model is not supported
     """
     model = model.lower().replace("-", "_").replace(" ", "_")
-    
-    if model in ["keysight_dsox6004a", "dsox6004a", "keysight"]:
+
+    if model in ["keysight_dsox6004a", "dsox6004a"]:
         return KeysightDSOX6004A(visa_address, **kwargs)
+    elif model in ["keysight_hd304mso", "hd304mso", "hd3"]:
+        return KeysightHD304MSO(visa_address, **kwargs)
     elif model in ["tektronix_mso24", "mso24", "tektronix"]:
         return TektronixMSO24(visa_address, **kwargs)
     else:
         raise ValueError(f"Unsupported oscilloscope model: {model}. "
-                        f"Supported models: keysight_dsox6004a, tektronix_mso24")
+                        f"Supported models: keysight_dsox6004a, keysight_hd304mso, tektronix_mso24")
 
 
 # Professional instrument control best practices

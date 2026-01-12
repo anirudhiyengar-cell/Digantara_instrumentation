@@ -46,7 +46,12 @@ if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
 # Import instrument control modules
 try:
-    from instrument_control.keysight_oscilloscope import KeysightDSOX6004A, KeysightDSOX6004AError
+    from instrument_control.keysight_oscilloscope import (
+        KeysightDSOX6004A,
+        KeysightDSOX6004AError,
+        KeysightHD304MSO,
+        KeysightHD304MSOError
+    )
 except ImportError as e:
     print(f"Error importing instrument control modules: {e}")
     print("Please ensure the instrument_control module is properly installed.")
@@ -413,17 +418,23 @@ class GradioOscilloscopeGUI:
         except Exception as e:
             print(f"Cleanup error: {e}")
 
-    def connect_oscilloscope(self, visa_address: str):
+    def connect_oscilloscope(self, visa_address: str, scope_model: str):
         try:
             if not visa_address:
                 return "Error: VISA address is empty", "Disconnected"
-            
-            self.oscilloscope = KeysightDSOX6004A(visa_address)
+
+            # Select appropriate oscilloscope class based on model
+            if "HD3" in scope_model or "HD304MSO" in scope_model:
+                self.oscilloscope = KeysightHD304MSO(visa_address)
+            else:  # Default to DSOX6004A
+                self.oscilloscope = KeysightDSOX6004A(visa_address)
+
             if self.oscilloscope.connect():
                 self.data_acquisition = OscilloscopeDataAcquisition(self.oscilloscope, io_lock=self.io_lock)
                 info = self.oscilloscope.get_instrument_info()
                 if info:
-                    info_text = f"Connected: {info['manufacturer']} {info['model']} | S/N: {info['serial_number']} | FW: {info['firmware_version']}"
+                    resolution_info = f" | Resolution: {info.get('resolution_bits', 8)}-bit" if 'resolution_bits' in info else ""
+                    info_text = f"Connected: {info['manufacturer']} {info['model']} | S/N: {info['serial_number']} | FW: {info['firmware_version']}{resolution_info}"
                     return info_text, "Connected"
                 else:
                     return "Connected (no info available)", "Connected"
@@ -832,6 +843,17 @@ class GradioOscilloscopeGUI:
             
             with gr.Tab("Connection"):
                 with gr.Row():
+                    scope_model = gr.Dropdown(
+                        label="Oscilloscope Model",
+                        choices=[
+                            "DSOX6004A (6000 X-Series, 8-bit, 1 GHz)",
+                            "HD304MSO (HD3 Series, 14-bit, 200 MHz)"
+                        ],
+                        value="DSOX6004A (6000 X-Series, 8-bit, 1 GHz)",
+                        scale=2
+                    )
+
+                with gr.Row():
                     visa_address = gr.Textbox(
                         label="VISA Address",
                         value="USB0::0x0957::0x1780::MY65220169::INSTR",
@@ -840,13 +862,13 @@ class GradioOscilloscopeGUI:
                     connect_btn = gr.Button("Connect", variant="primary", scale=1)
                     disconnect_btn = gr.Button("Disconnect", variant="stop", scale=1)
                     test_btn = gr.Button("Test", scale=1)
-                
+
                 connection_status = gr.Textbox(label="Status", value="Disconnected", interactive=False)
                 instrument_info = gr.Textbox(label="Instrument Information", interactive=False)
-                
+
                 connect_btn.click(
                     fn=self.connect_oscilloscope,
-                    inputs=[visa_address],
+                    inputs=[visa_address, scope_model],
                     outputs=[instrument_info, connection_status]
                 )
                 

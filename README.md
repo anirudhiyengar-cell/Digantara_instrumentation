@@ -885,20 +885,20 @@ The Digantara Instrumentation Control Suite follows a layered architecture patte
                        │ 
 ┌──────────────────────▼─────────────────────────────────────┐
 │              Gradio Application Server (Python)            │
-│  ┌────────────┬──────────────────┬──────────────────────┐  │
-│  │  DMM GUI   │   PSU GUI        │  Oscilloscope GUIs   │  │
-│  │ Controller │   Controller     │  (Keysight/Tektronix)│  │
-│  └──────┬─────┴─────┬────────────┴──────┬───────────────┘  │
-└─────────┼───────────┼───────────────────┼──────────────────┘
-          │           │                   │
-┌─────────▼───────────▼───────────────────▼──────────────────┐
+│  ┌────────┬──────────┬──────────┬──────────────────────┐  │
+│  │ DMM GUI│  PSU GUI │ Load GUI │  Oscilloscope GUIs   │  │
+│  │Control │Controller│Controller│  (Keysight/Tektronix)│  │
+│  └───┬────┴─────┬────┴─────┬────┴──────┬───────────────┘  │
+└──────┼──────────┼──────────┼───────────┼──────────────────┘
+       │          │          │           │
+┌──────▼──────────▼──────────▼───────────▼──────────────────┐
 │            Instrument Driver Layer (Python Classes)        │
-│  ┌──────────────┬────────────┬────────────┬─────────────┐  │
-│  │ KeithleyDMM  │ KeithleyPSU│ KeysightOsc│TektronixOsc │  │
-│  │ Class        │ Class      │ Class      │ Class       │  │
-│  └──────┬───────┴──────┬─────┴──────┬─────┴──────┬──────┘  │
-└─────────┼──────────────┼────────────┼────────────┼─────────┘
-          │              │            │            │
+│  ┌──────────┬──────────┬──────────┬──────────┬─────────┐  │
+│  │Keithley  │Keithley  │Keithley  │Keysight  │Tektronix│  │
+│  │DMM Class │PSU Class │Load Class│Osc Class │Osc Class│  │
+│  └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬────┘  │
+└───────┼──────────┼──────────┼──────────┼──────────┼───────┘
+        │          │          │          │          │
 ┌─────────▼──────────────▼────────────────────▼──────────────┐
 │              PyVISA Communication Layer                    │
 │         (SCPI Command Translation & Error Handling)        │
@@ -916,7 +916,7 @@ The Digantara Instrumentation Control Suite follows a layered architecture patte
                        │
 ┌──────────────────────▼──────────────────────────────────────┐
 │                Physical Instruments                         │
-│   (Keithley PSU, DMM, Keysight/Tektronix Oscilloscopes)    │
+│ (Keithley PSU, DMM, Load, Keysight/Tektronix Oscilloscopes)│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -978,17 +978,19 @@ Digantara_instrumentation/
 ├── Unified.py                          # Unified multi-instrument interface
 │
 ├── instrument_control/                 # Core instrument driver library
-│   ├── __init__.py                     # Package initialization
+│   ├── __init__.py                     # Package initialization & auto-detection exports
 │   ├── keithley_dmm.py                 # DMM6500/7510 driver
 │   ├── keithley_power_supply.py        # 2230-30-1 PSU driver
+│   ├── keithley_load.py                # 2380 series electronic load driver
 │   ├── keysight_oscilloscope.py        # DSOX6004A oscilloscope driver
 │   ├── tektronix_oscilloscope.py       # MSO24 oscilloscope driver
-│   └── scpi_wrapper.py                 # Base SCPI communication class
+│   └── scpi_wrapper.py                 # Base SCPI class + auto-detection utilities
 │
 ├── scripts/                            # Individual instrument GUIs
 │   ├── keithley/
 │   │   ├── keithley_PSU_gradio_automation.py     # PSU standalone GUI
 │   │   ├── keithley_dmm_gradio_automation.py     # DMM standalone GUI
+│   │   ├── keithley_load_gradio_gui.py           # Electronic load GUI (with auto-detect)
 │   │   └── keithley_power_supply_automation.py   # Legacy PSU interface
 │   ├── keysight/
 │   │   ├── General GUI useage/                   # General purpose interfaces
@@ -1008,11 +1010,13 @@ Digantara_instrumentation/
 ├── setup.py                            # Package installation configuration
 │
 ├── README.md                           # This file (main documentation)
+├── AUTO_DETECTION_GUIDE.md             # Automatic instrument detection guide
+├── test_auto_detection.py              # Auto-detection test script
 ├── INSTALLATION.md                     # Detailed installation guide
 ├── QUICK_START.md                      # Quick start tutorial
 ├── USAGE_WORKFLOWS.md                  # Common usage scenarios
 ├── DOCUMENTATION_INDEX.md              # Documentation navigation
-└── Test_Equipment_Control_Work_Instructions.pdf  # Work instructions
+└── Test_Equipment_Control_Work_Instructions.md  # Work instructions
 ```
 
 ---
