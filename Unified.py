@@ -2941,19 +2941,11 @@ class PowerSupplyAutomationGradio:
                 self.power_supply.set_voltage(channel, voltage)
 
                 # ────────────────────────────────────────────────────────────
-                # STEP 2: Calculate Elapsed Time and Sleep to Meet Target
+                # STEP 2: Measure Current, Then Sleep for Remaining Time
                 # ────────────────────────────────────────────────────────────
-                # Calculate how much time has elapsed since point start
-                point_elapsed = (datetime.now() - point_start_time).total_seconds()
-
-                # Calculate remaining time to meet target time per point
-                additional_delay = psu_settle - point_elapsed
-
-                # Sleep for remaining time (includes settle + measurement time)
-                if additional_delay > 0:
-                    time.sleep(additional_delay)    # Sleep to meet exact target time
-
                 # Measure actual voltage and current from PSU
+                # Done before the sleep so measurement time is included
+                # in the total time budget for this point.
                 measured_v = voltage                # Use commanded voltage as default
                 measured_i = 0.0                    # Default current
 
@@ -2965,6 +2957,15 @@ class PowerSupplyAutomationGradio:
                 except Exception as e:
                     self.logger.debug(f"Current measurement failed: {e}")
                     measured_i = 0.0
+
+                # Calculate how much time has elapsed since point start
+                # (includes both set_voltage and measure_current time)
+                point_elapsed = (datetime.now() - point_start_time).total_seconds()
+
+                # Sleep only for the remaining time to meet target time per point
+                additional_delay = psu_settle - point_elapsed
+                if additional_delay > 0:
+                    time.sleep(additional_delay)
 
                 # ────────────────────────────────────────────────────────────
                 # STEP 3: Timing Analysis
