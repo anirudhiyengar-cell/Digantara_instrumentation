@@ -1346,12 +1346,13 @@ class DMM_GUI_Controller:
             self.logger.error(f"Data export error: {e}")
             return f"Export failed: {str(e)}"
 
-    def save_trend_plot(self, save_path: str, last_n_points: int = 100) -> str:
+    def save_trend_plot(self, save_path: str, last_n_points: int = 100, custom_title: str = "") -> str:
         """Save trend plot to file at user-specified location.
 
         Args:
             save_path: Directory path where plot should be saved
             last_n_points: Number of recent points to plot
+            custom_title: Optional custom title for the plot
 
         Returns:
             Status message
@@ -1386,7 +1387,10 @@ class DMM_GUI_Controller:
             ax.plot(timestamps, values, 'b-', linewidth=1, marker='o', markersize=2)
             ax.set_xlabel('Time')
             ax.set_ylabel(f'Measurement Value ({self._get_unit(function)})')
-            ax.set_title(f'{function.replace("_", " ").title()} Trend')
+
+            # Use custom title if provided, otherwise use default
+            plot_title = custom_title.strip() if custom_title and custom_title.strip() else f'{function.replace("_", " ").title()} Trend'
+            ax.set_title(plot_title)
             ax.grid(True, alpha=0.3)
 
             # Format x-axis
@@ -1676,7 +1680,7 @@ class PowerSupplyAutomationGradio:
             (5.0, 5.0)  # (5 seconds, 5 volts)
         """
 
-        TYPES = ["Sine", "Square", "Triangle", "Ramp Up", "Ramp Down","Cardiac", "Damped Sine", "Exponential Raise", "Exponential Fall", "Gaussian Pulse", "Neural Spike", "Staircase", "PWM", "Chirp", "Burst Mode", "Brownout", "RC Charge", "Sinc", "Breathing"]
+        TYPES = ["Sine", "Square", "Triangle", "Ramp Up", "Ramp Down","Cardiac", "Damped Sine", "Exponential Raise", "Exponential Fall", "Gaussian Pulse", "Neural Spike", "Staircase", "Staircase Down", "Staircase Up/Down", "PWM", "Chirp", "Burst Mode", "Brownout", "RC Charge", "Sinc", "Breathing"]
 
         def __init__(self, waveform_type: str = "Sine", target_voltage: float = 3.0,
                      cycles: int = 3, points_per_cycle: int = 50, cycle_duration: float = 8.0):
@@ -1946,6 +1950,31 @@ class PowerSupplyAutomationGradio:
                         # Clamp step_index to prevent overshoot when pos approaches 1.0
                         step_index = min(step_index, steps - 1)
                         v = (step_index / (steps - 1)) * self.target_voltage
+
+                    elif self.waveform_type == "Staircase Down":
+                        # Descending discrete voltage steps - starts high, steps down
+                        # Divides cycle into 8 equal steps
+                        steps = 8
+                        step_index = int(pos * steps)
+                        # Clamp step_index to prevent overshoot when pos approaches 1.0
+                        step_index = min(step_index, steps - 1)
+                        # Invert the step index to go from high to low
+                        v = ((steps - 1 - step_index) / (steps - 1)) * self.target_voltage
+
+                    elif self.waveform_type == "Staircase Up/Down":
+                        # Bidirectional staircase - steps up then steps down
+                        # Divides cycle into 16 steps: 8 up, 8 down
+                        steps = 8
+                        if pos < 0.5:
+                            # First half: ascending steps
+                            step_index = int(pos * 2 * steps)
+                            step_index = min(step_index, steps - 1)
+                            v = (step_index / (steps - 1)) * self.target_voltage
+                        else:
+                            # Second half: descending steps
+                            step_index = int((pos - 0.5) * 2 * steps)
+                            step_index = min(step_index, steps - 1)
+                            v = ((steps - 1 - step_index) / (steps - 1)) * self.target_voltage
 
                     elif self.waveform_type == "PWM":
                         # Pulse Width Modulation - duty cycle varies linearly
@@ -2924,9 +2953,18 @@ class PowerSupplyAutomationGradio:
                 if additional_delay > 0:
                     time.sleep(additional_delay)    # Sleep to meet exact target time
 
-                # Use setpoint values (no actual measurement to avoid delays)
-                measured_v = voltage                # Use commanded voltage
-                measured_i = 0.0                    # No current measurement
+                # Measure actual voltage and current from PSU
+                measured_v = voltage                # Use commanded voltage as default
+                measured_i = 0.0                    # Default current
+
+                # Try to get actual current measurement from PSU
+                try:
+                    actual_current = self.power_supply.measure_current(channel)
+                    if actual_current is not None:
+                        measured_i = actual_current
+                except Exception as e:
+                    self.logger.debug(f"Current measurement failed: {e}")
+                    measured_i = 0.0
 
                 # ────────────────────────────────────────────────────────────
                 # STEP 3: Timing Analysis
@@ -3154,7 +3192,7 @@ class PowerSupplyAutomationGradio:
             timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"psu_waveform_live_{timestamp_str}.png"
             filepath = save_dir / filename
-            plt.savefig(filepath, dpi=300, bbox_inches='tight', facecolor='white')
+            plt.savefig(filepath, dpi=1200, bbox_inches='tight', facecolor='white')
             plt.close(fig)
 
             self.log_message(f"Live waveform plot saved to: {filepath}", "SUCCESS")
@@ -3315,6 +3353,15 @@ class PowerSupplyAutomationGradio:
                     # Set voltage on this channel
                     self.power_supply.set_voltage(ch, voltage)
 
+                    # Measure actual current from PSU
+                    measured_i = 0.0
+                    try:
+                        actual_current = self.power_supply.measure_current(ch)
+                        if actual_current is not None:
+                            measured_i = actual_current
+                    except Exception as e:
+                        self.logger.debug(f"CH{ch} current measurement failed: {e}")
+
                     # Calculate cycle position
                     points_per_cycle = gen_data['generator'].points_per_cycle
                     cycle_num = point_idx // points_per_cycle
@@ -3325,8 +3372,8 @@ class PowerSupplyAutomationGradio:
                         'timestamp': timestamp,
                         'channel': ch,
                         'set_voltage': voltage,
-                        'measured_voltage': voltage,  # Use set value (no actual measurement)
-                        'measured_current': 0.0,  # No measurement during execution
+                        'measured_voltage': voltage,  # Use set value
+                        'measured_current': measured_i,  # Actual measured current
                         'cycle_number': cycle_num,
                         'point_in_cycle': point_in_cycle,
                         'point_index': point_idx
@@ -4022,7 +4069,7 @@ class OscilloscopeDataAcquisition:
                     family='monospace')
 
             plt.tight_layout()
-            plt.savefig(filepath, dpi=600, bbox_inches='tight', facecolor='white')
+            plt.savefig(filepath, dpi=1200, bbox_inches='tight', facecolor='white')
             plt.close(fig)
 
             self._logger.info(f"Plot saved: {filepath}")
@@ -5514,6 +5561,12 @@ class UnifiedInstrumentControl:
                     )
                     dmm_plot_browse_btn = gr.Button("Browse", variant="secondary", scale=1)
 
+                dmm_plot_title = gr.Textbox(
+                    label="Plot Title (optional)",
+                    placeholder="Enter custom title for the graph...",
+                    interactive=True
+                )
+
                 dmm_save_plot_btn = gr.Button("Save Plot", variant="primary")
                 dmm_plot_save_status = gr.Textbox(
                     label="Save Status",
@@ -5673,7 +5726,7 @@ class UnifiedInstrumentControl:
         # Save plot button
         dmm_save_plot_btn.click(
             fn=self.dmm_controller.save_trend_plot,
-            inputs=[dmm_plot_save_path, dmm_plot_points],
+            inputs=[dmm_plot_save_path, dmm_plot_points, dmm_plot_title],
             outputs=[dmm_plot_save_status]
         )
 
@@ -5879,110 +5932,6 @@ class UnifiedInstrumentControl:
                 outputs=[psu_export_status]
             )
             psu_clear_btn.click(fn=self.psu_controller.clear_measurement_data)
-
-        # # ════════════════════════════════════════════════════════════════════════════
-        # # LIVE MONITOR - Real-time graphs for PSU channels
-        # # ════════════════════════════════════════════════════════════════════════════
-        # gr.Markdown("### Live Monitor")
-        # gr.Markdown("Real-time voltage, current, and power monitoring with live updating graphs")
-
-        # with gr.Group():
-        #     with gr.Row():
-        #         psu_live_ch1_cb = gr.Checkbox(label="Monitor CH1", value=True)
-        #         psu_live_ch2_cb = gr.Checkbox(label="Monitor CH2", value=False)
-        #         psu_live_ch3_cb = gr.Checkbox(label="Monitor CH3", value=False)
-        #         psu_live_interval = gr.Slider(0.5, 10.0, value=1.0, label="Update Interval (s)", step=0.5)
-
-        #     with gr.Row():
-        #         psu_start_live_btn = gr.Button("Start Live Monitor", variant="primary", size="lg")
-        #         psu_stop_live_btn = gr.Button("Stop Live Monitor", variant="stop", size="lg")
-        #         psu_clear_live_btn = gr.Button("Clear Live Data", variant="secondary")
-
-        #     psu_live_status = gr.Textbox(label="Live Monitor Status", value="Stopped", interactive=False)
-
-        #     with gr.Row():
-        #         psu_plot_type = gr.Dropdown(
-        #             choices=["voltage", "current", "power"],
-        #             value="voltage",
-        #             label="Plot Type"
-        #         )
-        #         psu_refresh_plot_btn = gr.Button("Refresh Plot", variant="secondary")
-
-        #     psu_live_plot = gr.Plot(label="Live Trend Plot")
-
-        #     gr.Markdown("#### Live Statistics")
-        #     with gr.Row():
-        #         with gr.Column():
-        #             gr.Markdown("**CH1**")
-        #             psu_ch1_count = gr.Textbox(label="Samples", value="0", interactive=False)
-        #             psu_ch1_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
-        #             psu_ch1_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
-        #             psu_ch1_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
-        #         with gr.Column():
-        #             gr.Markdown("**CH2**")
-        #             psu_ch2_count = gr.Textbox(label="Samples", value="0", interactive=False)
-        #             psu_ch2_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
-        #             psu_ch2_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
-        #             psu_ch2_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
-        #         with gr.Column():
-        #             gr.Markdown("**CH3**")
-        #             psu_ch3_count = gr.Textbox(label="Samples", value="0", interactive=False)
-        #             psu_ch3_avg_v = gr.Textbox(label="Avg V", value="N/A", interactive=False)
-        #             psu_ch3_avg_i = gr.Textbox(label="Avg I", value="N/A", interactive=False)
-        #             psu_ch3_avg_p = gr.Textbox(label="Avg P", value="N/A", interactive=False)
-
-        #     # Live monitor handlers
-        #     def psu_handle_start_live(ch1, ch2, ch3, interval):
-        #         channels = []
-        #         if ch1:
-        #             channels.append(1)
-        #         if ch2:
-        #             channels.append(2)
-        #         if ch3:
-        #             channels.append(3)
-        #         return self.psu_controller.start_live_measurement(channels, interval)
-
-        #     def psu_handle_stop_live():
-        #         return self.psu_controller.stop_live_measurement()
-
-        #     def psu_handle_clear_live():
-        #         return self.psu_controller.clear_live_data()
-
-        #     def psu_handle_refresh_plot(plot_type):
-        #         fig = self.psu_controller.create_live_plot(plot_type)
-        #         s1 = self.psu_controller.get_live_statistics(1)
-        #         s2 = self.psu_controller.get_live_statistics(2)
-        #         s3 = self.psu_controller.get_live_statistics(3)
-        #         return (fig,
-        #                 s1[0], s1[1], s1[2], s1[3],
-        #                 s2[0], s2[1], s2[2], s2[3],
-        #                 s3[0], s3[1], s3[2], s3[3])
-
-        #     psu_start_live_btn.click(
-        #         fn=psu_handle_start_live,
-        #         inputs=[psu_live_ch1_cb, psu_live_ch2_cb, psu_live_ch3_cb, psu_live_interval],
-        #         outputs=[psu_live_status]
-        #     )
-
-        #     psu_stop_live_btn.click(
-        #         fn=psu_handle_stop_live,
-        #         outputs=[psu_live_status]
-        #     )
-
-        #     psu_clear_live_btn.click(
-        #         fn=psu_handle_clear_live,
-        #         outputs=[psu_live_status]
-        #     )
-
-        #     psu_refresh_plot_btn.click(
-        #         fn=psu_handle_refresh_plot,
-        #         inputs=[psu_plot_type],
-        #         outputs=[psu_live_plot,
-        #                  psu_ch1_count, psu_ch1_avg_v, psu_ch1_avg_i, psu_ch1_avg_p,
-        #                  psu_ch2_count, psu_ch2_avg_v, psu_ch2_avg_i, psu_ch2_avg_p,
-        #                  psu_ch3_count, psu_ch3_avg_v, psu_ch3_avg_i, psu_ch3_avg_p]
-        #     )
-
         # ════════════════════════════════════════════════════════════════════════════
         # MULTI-CHANNEL SIMULTANEOUS WAVEFORM GENERATOR (Replaces single-channel)
         # ════════════════════════════════════════════════════════════════════════════
@@ -6004,6 +5953,8 @@ class UnifiedInstrumentControl:
                 "Gaussian Pulse - ⌒ bell curve",
                 "Neural Spike - ⟰ action potential",
                 "Staircase - ⎽⎺ discrete steps",
+                "Staircase Down - ⎺⎽ descending steps",
+                "Staircase Up/Down - ⎽⎺⎽ bidirectional steps",
                 "PWM - ⎍⎍⎍ variable duty cycle",
                 "Chirp - ∿∿∿ frequency sweep",
                 "Burst Mode - ⎍⎍___ on/off bursts",
@@ -6226,7 +6177,7 @@ class UnifiedInstrumentControl:
 
             psu_waveform_plot = gr.Plot(label="Multi-Channel Waveform Preview")
 
-            gr.Markdown("### Save Waveform Plot")
+            gr.Markdown("### Save Waveform Data")
             with gr.Row():
                 psu_waveform_save_path = gr.Textbox(
                     label="Save Location for Waveform Plots",
@@ -6236,7 +6187,25 @@ class UnifiedInstrumentControl:
                 )
                 psu_waveform_browse_btn = gr.Button("Browse", variant="secondary", scale=1)
 
-            psu_save_waveform_btn = gr.Button("Save Multi-Channel Waveform Plot", variant="primary")
+            with gr.Row():
+                psu_save_csv_checkbox = gr.Checkbox(
+                    label="Also save CSV data (Time, Voltage, Current)",
+                    value=True,
+                    scale=2
+                )
+                psu_save_plot_checkbox = gr.Checkbox(
+                    label="Save Plot (PNG)",
+                    value=True,
+                    scale=1
+                )
+
+            psu_plot_title = gr.Textbox(
+                label="Plot Title (optional)",
+                placeholder="Enter custom title for the graph...",
+                interactive=True
+            )
+
+            psu_save_waveform_btn = gr.Button("Save Waveform Data", variant="primary")
             psu_waveform_save_status = gr.Textbox(
                 label="Save Status",
                 interactive=False
@@ -6335,15 +6304,19 @@ class UnifiedInstrumentControl:
                            ha='center', va='center', transform=ax.transAxes, fontsize=12, color='red')
                     return fig
 
-            def save_waveform_plot(save_path):
-                """Save the LIVE execution data graph (measured data from actual waveform run)"""
+            def save_waveform_plot(save_path, save_csv=True, save_plot=True, custom_title=""):
+                """Save the LIVE execution data graph and/or CSV (measured data from actual waveform run)"""
                 try:
                     if not save_path or save_path.strip() == "":
                         return "ERROR: Please select a save location first"
 
+                    if not save_csv and not save_plot:
+                        return "ERROR: Please select at least one save option (CSV or Plot)"
+
                     from pathlib import Path
                     import matplotlib.pyplot as plt
                     from datetime import datetime
+                    import csv
 
                     save_dir = Path(save_path)
 
@@ -6368,61 +6341,128 @@ class UnifiedInstrumentControl:
                         channels_data[ch]['measured_v'].append(point.get('measured_voltage', 0))
                         channels_data[ch]['measured_i'].append(point.get('measured_current', 0))
 
-                    # Create figure with subplots
                     num_channels = len(channels_data)
                     if num_channels == 0:
                         return "ERROR: No channel data found in execution results."
 
-                    fig, axes = plt.subplots(num_channels, 2, figsize=(16, 5 * num_channels), squeeze=False)
-
-                    colors = {1: '#2196F3', 2: '#4CAF50', 3: '#FF9800'}
-
-                    for idx, (ch, ch_data) in enumerate(sorted(channels_data.items())):
-                        # Convert timestamps to relative seconds
-                        if ch_data['timestamps']:
-                            t0 = ch_data['timestamps'][0]
-                            times = [(t - t0).total_seconds() for t in ch_data['timestamps']]
-                        else:
-                            times = []
-
-                        ax_v = axes[idx][0]
-                        ax_i = axes[idx][1]
-
-                        # Voltage plot
-                        ax_v.plot(times, ch_data['set_v'], '--', color=colors.get(ch, 'blue'),
-                                 linewidth=1, label='Setpoint', alpha=0.7)
-                        ax_v.plot(times, ch_data['measured_v'], '-', color=colors.get(ch, 'blue'),
-                                 linewidth=2, label='Measured')
-                        ax_v.set_xlabel('Time (s)')
-                        ax_v.set_ylabel('Voltage (V)')
-                        ax_v.set_title(f'CH{ch} Voltage - Live Execution Data')
-                        ax_v.legend(loc='upper right')
-                        ax_v.grid(True, alpha=0.3)
-
-                        # Current plot
-                        ax_i.plot(times, ch_data['measured_i'], '-', color=colors.get(ch, 'blue'),
-                                 linewidth=2)
-                        ax_i.set_xlabel('Time (s)')
-                        ax_i.set_ylabel('Current (A)')
-                        ax_i.set_title(f'CH{ch} Current - Live Execution Data')
-                        ax_i.grid(True, alpha=0.3)
-
-                    plt.suptitle(f'Multi-Channel Waveform Execution Results - {len(data)} Data Points',
-                                fontsize=14, fontweight='bold')
-                    plt.tight_layout()
-
-                    # Save
                     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"waveform_live_data_{timestamp_str}.png"
-                    filepath = save_dir / filename
-                    fig.savefig(filepath, dpi=300, bbox_inches='tight', facecolor='white')
-                    plt.close(fig)
+                    saved_files = []
 
-                    return f"✓ LIVE data saved to:\n{filepath}\n({len(data)} points, {num_channels} channel(s))"
+                    # ════════════════════════════════════════════════════════════
+                    # SAVE CSV DATA
+                    # ════════════════════════════════════════════════════════════
+                    if save_csv:
+                        csv_filename = f"waveform_data_{timestamp_str}.csv"
+                        csv_filepath = save_dir / csv_filename
+
+                        with open(csv_filepath, 'w', newline='') as csvfile:
+                            writer = csv.writer(csvfile)
+
+                            # Write header
+                            header = ['Time (s)', 'Timestamp']
+                            for ch in sorted(channels_data.keys()):
+                                header.extend([f'CH{ch}_Set_Voltage (V)', f'CH{ch}_Measured_Voltage (V)', f'CH{ch}_Measured_Current (A)'])
+                            writer.writerow(header)
+
+                            # Find the reference timestamp (earliest across all channels)
+                            all_timestamps = []
+                            for ch_data in channels_data.values():
+                                all_timestamps.extend(ch_data['timestamps'])
+                            t0 = min(all_timestamps) if all_timestamps else datetime.now()
+
+                            # Get max data points across channels
+                            max_points = max(len(ch_data['timestamps']) for ch_data in channels_data.values())
+
+                            # Write data rows
+                            for i in range(max_points):
+                                row = []
+                                # Use the first available timestamp for this index
+                                timestamp = None
+                                for ch in sorted(channels_data.keys()):
+                                    if i < len(channels_data[ch]['timestamps']):
+                                        timestamp = channels_data[ch]['timestamps'][i]
+                                        break
+
+                                if timestamp:
+                                    time_sec = (timestamp - t0).total_seconds()
+                                    row.append(f"{time_sec:.3f}")
+                                    row.append(timestamp.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3])
+                                else:
+                                    row.extend(['', ''])
+
+                                # Add data for each channel
+                                for ch in sorted(channels_data.keys()):
+                                    ch_data = channels_data[ch]
+                                    if i < len(ch_data['timestamps']):
+                                        row.append(f"{ch_data['set_v'][i]:.6f}")
+                                        row.append(f"{ch_data['measured_v'][i]:.6f}")
+                                        row.append(f"{ch_data['measured_i'][i]:.6f}")
+                                    else:
+                                        row.extend(['', '', ''])
+
+                                writer.writerow(row)
+
+                        saved_files.append(f"CSV: {csv_filepath}")
+
+                    # ════════════════════════════════════════════════════════════
+                    # SAVE PLOT (PNG)
+                    # ════════════════════════════════════════════════════════════
+                    if save_plot:
+                        fig, axes = plt.subplots(num_channels, 2, figsize=(16, 5 * num_channels), squeeze=False)
+
+                        colors = {1: '#2196F3', 2: '#4CAF50', 3: '#FF9800'}
+
+                        for idx, (ch, ch_data) in enumerate(sorted(channels_data.items())):
+                            # Convert timestamps to relative seconds
+                            if ch_data['timestamps']:
+                                t0 = ch_data['timestamps'][0]
+                                times = [(t - t0).total_seconds() for t in ch_data['timestamps']]
+                            else:
+                                times = []
+
+                            ax_v = axes[idx][0]
+                            ax_i = axes[idx][1]
+
+                            # Voltage plot
+                            ax_v.plot(times, ch_data['set_v'], '--', color=colors.get(ch, 'blue'),
+                                     linewidth=1, label='Setpoint', alpha=0.7)
+                            ax_v.plot(times, ch_data['measured_v'], '-', color=colors.get(ch, 'blue'),
+                                     linewidth=2, label='Measured')
+                            ax_v.set_xlabel('Time (s)')
+                            ax_v.set_ylabel('Voltage (V)')
+                            ax_v.set_title(f'CH{ch} Voltage - Live Execution Data')
+                            ax_v.legend(loc='upper right')
+                            ax_v.grid(True, alpha=0.3)
+
+                            # Current plot
+                            ax_i.plot(times, ch_data['measured_i'], '-', color=colors.get(ch, 'blue'),
+                                     linewidth=2)
+                            ax_i.set_xlabel('Time (s)')
+                            ax_i.set_ylabel('Current (A)')
+                            ax_i.set_title(f'CH{ch} Current - Live Execution Data')
+                            ax_i.grid(True, alpha=0.3)
+
+                        # Use custom title if provided, otherwise use default
+                        plot_title = custom_title.strip() if custom_title and custom_title.strip() else f'Multi-Channel Waveform Execution Results - {len(data)} Data Points'
+                        plt.suptitle(plot_title, fontsize=14, fontweight='bold')
+                        plt.tight_layout()
+
+                        png_filename = f"waveform_plot_{timestamp_str}.png"
+                        png_filepath = save_dir / png_filename
+                        fig.savefig(png_filepath, dpi=1200, bbox_inches='tight', facecolor='white')
+                        plt.close(fig)
+
+                        saved_files.append(f"Plot: {png_filepath}")
+
+                    # Build result message
+                    result_msg = f"✓ Saved {len(data)} data points from {num_channels} channel(s):\n"
+                    result_msg += "\n".join(saved_files)
+
+                    return result_msg
 
                 except Exception as e:
                     import traceback
-                    return f"ERROR saving plot: {str(e)}"
+                    return f"ERROR saving data: {str(e)}"
 
             def start_multi_channel_waveform(
                 ch1_en, ch1_wf, ch1_v, ch1_i, ch1_cyc, ch1_pts, ch1_dur,
@@ -6512,10 +6552,10 @@ class UnifiedInstrumentControl:
             # Note: Browse button removed - users should manually type/paste path in the textbox
             # The waveform save path textbox is directly editable by the user
 
-            # Save waveform plot button - uses the new save_waveform_plot function
+            # Save waveform data button - saves CSV and/or plot based on checkboxes
             psu_save_waveform_btn.click(
                 fn=save_waveform_plot,
-                inputs=[psu_waveform_save_path],
+                inputs=[psu_waveform_save_path, psu_save_csv_checkbox, psu_save_plot_checkbox, psu_plot_title],
                 outputs=[psu_waveform_save_status]
             )
 
