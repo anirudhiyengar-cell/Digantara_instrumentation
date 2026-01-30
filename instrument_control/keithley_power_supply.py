@@ -177,10 +177,68 @@ class KeithleyPowerSupply:
         except Exception as e:
             self._logger.error(f"Error during disconnection: {e}")
         finally:
-            self._instrument = None
-            self._resource_manager = None
-            self._is_connected = False
+            self._cleanup_connection()
             self._logger.info("Disconnection completed")
+
+    def _cleanup_connection(self) -> None:
+        """Clean up connection state and references."""
+        self._instrument = None
+        self._resource_manager = None
+        self._is_connected = False
+
+    def _verify_connection(self) -> bool:
+        """
+        Verify that the VISA session is still valid.
+
+        Returns:
+            True if connection is valid, False otherwise
+        """
+        if not self._is_connected or self._instrument is None:
+            return False
+
+        try:
+            # Quick query to verify connection is alive
+            self._instrument.query("*IDN?")
+            return True
+        except Exception as e:
+            self._logger.warning(f"Connection verification failed: {e}")
+            self._is_connected = False
+            return False
+
+    def _ensure_connection(self, max_retries: int = 3) -> bool:
+        """
+        Ensure connection is valid, attempting reconnection if needed.
+
+        Args:
+            max_retries: Maximum number of reconnection attempts
+
+        Returns:
+            True if connected (or reconnected), False if all attempts failed
+        """
+        # First check if already connected
+        if self._verify_connection():
+            return True
+
+        self._logger.info("Connection lost, attempting to reconnect...")
+
+        # Clean up any stale connection state
+        self._cleanup_connection()
+
+        # Attempt reconnection with retries
+        for attempt in range(1, max_retries + 1):
+            self._logger.info(f"Reconnection attempt {attempt}/{max_retries}")
+            try:
+                if self.connect():
+                    self._logger.info("Reconnection successful")
+                    return True
+            except Exception as e:
+                self._logger.warning(f"Reconnection attempt {attempt} failed: {e}")
+
+            # Wait before retry (increasing delay)
+            time.sleep(0.5 * attempt)
+
+        self._logger.error(f"Failed to reconnect after {max_retries} attempts")
+        return False
 
     def get_instrument_info(self) -> Optional[Dict[str, Any]]:
         if not self.is_connected:
@@ -205,8 +263,9 @@ class KeithleyPowerSupply:
             return None
 
     def configure_channel(self, channel: int, voltage: float, current_limit: float, ovp_level: float, enable_output: bool = False) -> bool:
-        if not self.is_connected:
-            self._logger.error("Cannot configure channel: not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot configure channel: not connected and reconnection failed")
             return False
         if not (1 <= channel <= self.max_channels):
             self._logger.error(f"Invalid channel {channel}")
@@ -238,11 +297,16 @@ class KeithleyPowerSupply:
             return True
         except Exception as e:
             self._logger.error(f"Failed to configure channel {channel}: {e}")
+            # Check for session handle errors to trigger reconnection on next attempt
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return False
 
     def enable_channel_output(self, channel: int) -> bool:
-        if not self.is_connected:
-            self._logger.error("Cannot enable output: not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot enable output: not connected and reconnection failed")
             return False
         if not (1 <= channel <= self.max_channels):
             self._logger.error(f"Invalid channel {channel}")
@@ -261,11 +325,16 @@ class KeithleyPowerSupply:
             return False
         except Exception as e:
             self._logger.error(f"Enable output failed on CH{channel}: {e}")
+            # Check for session handle errors
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return False
 
     def disable_channel_output(self, channel: int) -> bool:
-        if not self.is_connected:
-            self._logger.error("Cannot disable output: not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot disable output: not connected and reconnection failed")
             return False
         if not (1 <= channel <= self.max_channels):
             self._logger.error(f"Invalid channel {channel}")
@@ -284,6 +353,10 @@ class KeithleyPowerSupply:
             return False
         except Exception as e:
             self._logger.error(f"Disable output failed on CH{channel}: {e}")
+            # Check for session handle errors
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return False
 
     def disable_all_outputs(self) -> bool:
@@ -312,8 +385,9 @@ class KeithleyPowerSupply:
         Returns:
             True if successful, False otherwise
         """
-        if not self.is_connected:
-            self._logger.error("Cannot set voltage: not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot set voltage: not connected and reconnection failed")
             return False
 
         if not (1 <= channel <= self.max_channels):
@@ -336,6 +410,10 @@ class KeithleyPowerSupply:
             return True
         except Exception as e:
             self._logger.error(f"Failed to set voltage on channel {channel}: {e}")
+            # Check for session handle errors to trigger reconnection on next attempt
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return False
 
     def measure_voltage(self, channel: int) -> Optional[float]:
@@ -348,8 +426,9 @@ class KeithleyPowerSupply:
         Returns:
             Measured voltage in volts, or None if measurement fails
         """
-        if not self.is_connected:
-            self._logger.error("Cannot measure voltage: not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot measure voltage: not connected and reconnection failed")
             return None
 
         if not (1 <= channel <= self.max_channels):
@@ -372,6 +451,10 @@ class KeithleyPowerSupply:
                 return 0.0
         except Exception as e:
             self._logger.error(f"Failed to measure voltage on channel {channel}: {e}")
+            # Check for session handle errors
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return None
 
     def measure_current(self, channel: int) -> Optional[float]:
@@ -384,8 +467,9 @@ class KeithleyPowerSupply:
         Returns:
             Measured current in amps, or None if measurement fails
         """
-        if not self.is_connected:
-            self._logger.error("Cannot measure current: not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot measure current: not connected and reconnection failed")
             return None
 
         if not (1 <= channel <= self.max_channels):
@@ -419,6 +503,10 @@ class KeithleyPowerSupply:
                 return 0.0
         except Exception as e:
             self._logger.error(f"Failed to measure current on channel {channel}: {e}")
+            # Check for session handle errors
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return None
 
     def measure_channel_output(self, channel: int) -> Optional[Tuple[float, float]]:
@@ -426,8 +514,9 @@ class KeithleyPowerSupply:
         ABSOLUTE FINAL: Improved parsing and buffer management
         Returns (voltage, current) tuple or None if measurement fails
         """
-        if not self.is_connected:
-            self._logger.error("Cannot measure: not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot measure: not connected and reconnection failed")
             return None
 
         if not (1 <= channel <= self.max_channels):
@@ -497,11 +586,16 @@ class KeithleyPowerSupply:
             self._logger.error(f"Measurement failed on channel {channel}: {e}")
             import traceback
             self._logger.error(traceback.format_exc())
+            # Check for session handle errors to trigger reconnection on next attempt
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return None
         finally:
             # Always restore the original timeout
             try:
-                self._instrument.timeout = original_timeout
+                if self._instrument is not None:
+                    self._instrument.timeout = original_timeout
             except Exception as restore_err:
                 self._logger.debug(f"Failed to restore timeout: {restore_err}")
 

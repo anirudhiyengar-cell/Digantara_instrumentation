@@ -359,7 +359,61 @@ class KeithleyDMM6500:
             self._cleanup_connection()
             self._logger.info("Disconnection completed")
 
-    def measure_dc_voltage(self, 
+    def _verify_connection(self) -> bool:
+        """
+        Verify that the VISA session is still valid.
+
+        Returns:
+            True if connection is valid, False otherwise
+        """
+        if not self._is_connected or self._instrument is None:
+            return False
+
+        try:
+            # Quick query to verify connection is alive
+            self._instrument.query("*IDN?")
+            return True
+        except Exception as e:
+            self._logger.warning(f"Connection verification failed: {e}")
+            self._is_connected = False
+            return False
+
+    def _ensure_connection(self, max_retries: int = 3) -> bool:
+        """
+        Ensure connection is valid, attempting reconnection if needed.
+
+        Args:
+            max_retries: Maximum number of reconnection attempts
+
+        Returns:
+            True if connected (or reconnected), False if all attempts failed
+        """
+        # First check if already connected
+        if self._verify_connection():
+            return True
+
+        self._logger.info("Connection lost, attempting to reconnect...")
+
+        # Clean up any stale connection state
+        self._cleanup_connection()
+
+        # Attempt reconnection with retries
+        for attempt in range(1, max_retries + 1):
+            self._logger.info(f"Reconnection attempt {attempt}/{max_retries}")
+            try:
+                if self.connect():
+                    self._logger.info("Reconnection successful")
+                    return True
+            except Exception as e:
+                self._logger.warning(f"Reconnection attempt {attempt} failed: {e}")
+
+            # Wait before retry (increasing delay)
+            time.sleep(0.5 * attempt)
+
+        self._logger.error(f"Failed to reconnect after {max_retries} attempts")
+        return False
+
+    def measure_dc_voltage(self,
                           measurement_range: Optional[float] = None,
                           resolution: Optional[float] = None,
                           nplc: Optional[float] = None,
@@ -382,8 +436,9 @@ class KeithleyDMM6500:
         Raises:
             KeithleyDMM6500Error: If instrument not connected or invalid parameters
         """
-        if not self._is_connected:
-            raise KeithleyDMM6500Error("Multimeter not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            raise KeithleyDMM6500Error("Multimeter not connected and reconnection failed")
 
         try:
             self._logger.info("Configuring for high-precision DC voltage measurement")
@@ -460,6 +515,9 @@ class KeithleyDMM6500:
                 self._logger.error("Measurement timeout - consider increasing timeout or reducing NPLC")
             else:
                 self._logger.error(f"VISA communication error: {e}")
+            # Mark connection as invalid to trigger reconnection on next attempt
+            if "session" in str(e).lower() or "closed" in str(e).lower():
+                self._is_connected = False
             return None
 
         except (ValueError, AttributeError) as e:
@@ -468,6 +526,10 @@ class KeithleyDMM6500:
 
         except Exception as e:
             self._logger.error(f"Unexpected error during DC voltage measurement: {e}")
+            # Check for session handle errors
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return None
 
     def measure_dc_voltage_fast(self) -> Optional[float]:
@@ -480,8 +542,9 @@ class KeithleyDMM6500:
         Returns:
             DC voltage measurement in volts, or None if measurement failed
         """
-        if not self._is_connected:
-            self._logger.error("Cannot measure voltage: multimeter not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot measure voltage: multimeter not connected and reconnection failed")
             return None
 
         try:
@@ -506,6 +569,10 @@ class KeithleyDMM6500:
 
         except Exception as e:
             self._logger.error(f"Fast measurement failed: {e}")
+            # Check for session handle errors to trigger reconnection on next attempt
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return None
 
     def check_instrument_errors(self) -> List[str]:
@@ -675,8 +742,9 @@ class KeithleyDMM6500:
         Returns:
             Measured value as float, or None on failure
         """
-        if not self._is_connected:
-            self._logger.error("Cannot measure: multimeter not connected")
+        # Ensure connection is valid, reconnect if needed
+        if not self._ensure_connection():
+            self._logger.error("Cannot measure: multimeter not connected and reconnection failed")
             return None
 
         try:
@@ -793,9 +861,17 @@ class KeithleyDMM6500:
                 self._logger.error("Measurement timeout - consider increasing timeout or reducing NPLC")
             else:
                 self._logger.error(f"VISA communication error: {e}")
+            # Mark connection as invalid to trigger reconnection on next attempt
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str:
+                self._is_connected = False
             return None
         except Exception as e:
             self._logger.error(f"Unexpected error during measurement {function.value}: {e}")
+            # Check for session handle errors
+            error_str = str(e).lower()
+            if "session" in error_str or "closed" in error_str or "invalid" in error_str:
+                self._is_connected = False
             return None
 
     # Convenience wrappers mirroring common DMM functions
