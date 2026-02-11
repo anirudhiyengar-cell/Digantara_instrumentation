@@ -5560,7 +5560,7 @@ class UnifiedInstrumentControl:
                         interactive=True,
                         scale=3
                     )
-                    dmm_plot_browse_btn = gr.Button("Browse", variant="secondary", scale=1)
+                    
 
                 dmm_plot_title = gr.Textbox(
                     label="Plot Title (optional)",
@@ -5586,7 +5586,7 @@ class UnifiedInstrumentControl:
                         interactive=True,
                         scale=3
                     )
-                    dmm_export_browse_btn = gr.Button("Browse", variant="secondary", scale=1)
+                    
 
                 dmm_export_format = gr.Dropdown(
                     label="Export Format",
@@ -5744,7 +5744,7 @@ class UnifiedInstrumentControl:
         
         def update_data_preview():
             if self.dmm_controller.measurement_data:
-                recent_data = self.dmm_controller.measurement_data[-200:]  # Show last 200 points
+                recent_data = self.dmm_controller.measurement_data[-1000:]  # Show last 200 points
                 df_data = []
                 for point in recent_data:
                     df_data.append([
@@ -5911,7 +5911,7 @@ class UnifiedInstrumentControl:
                     interactive=True,
                     scale=3
                 )
-                psu_export_browse_btn = gr.Button("Browse", variant="secondary", scale=1)
+                
 
             with gr.Row():
                 psu_export_btn = gr.Button("Export to CSV", variant="primary")
@@ -6186,7 +6186,7 @@ class UnifiedInstrumentControl:
                     interactive=True,
                     scale=3
                 )
-                psu_waveform_browse_btn = gr.Button("Browse", variant="secondary", scale=1)
+                
 
             with gr.Row():
                 psu_save_csv_checkbox = gr.Checkbox(
