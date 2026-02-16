@@ -49,6 +49,7 @@ import time
 from datetime import datetime
 from typing import Optional, Tuple
 from pathlib import Path
+import socket
 import sys
 
 # Add parent directory to path to import from instrument_control
@@ -1050,6 +1051,8 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Starting web interface...")
 
+    hostname = socket.gethostname()
+    print(f"Network access from other PCs: http://{hostname}:7866")
     interface = create_dmm_interface()
     interface.launch(
         server_name="0.0.0.0",

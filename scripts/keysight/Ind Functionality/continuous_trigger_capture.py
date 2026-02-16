@@ -52,6 +52,7 @@ from typing import Optional, Dict, Any, List, Tuple  # Type hints for clarity
 from dataclasses import dataclass  # Easy way to create data containers
 import signal               # For handling system interrupts (Ctrl+C)
 import atexit               # For cleanup when program exits
+import socket               # For hostname detection
 import json                 # For saving reports in structured format
 
 import numpy as np          # Numerical processing library
@@ -1868,7 +1869,9 @@ class TriggerCaptureGUI:
         print("TRIGGER CAPTURE AUTOMATION SYSTEM")
         print("Screenshot & Data Capture on Trigger Events")
         print("="*60)
+        hostname = socket.gethostname()
         print(f"Starting web interface on port {server_port}...")
+        print(f"Network access from other PCs: http://{hostname}:{server_port}")
 
         try:
             interface.launch(

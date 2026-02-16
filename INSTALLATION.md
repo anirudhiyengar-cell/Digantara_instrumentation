@@ -902,7 +902,7 @@ If installation problems persist:
    - PyVISA documentation
 
 3. **Contact Support**:
-   - Email: info@digantara.com
+   - Email: anirudh.iyengar@digantara.co.in
    - Include:
      - Operating system and version
      - Python version (`python --version`)
@@ -911,5 +911,5 @@ If installation problems persist:
 
 ---
 
-**Document Version**: 1.0
-**For**: Digantara Instrumentation Control Suite v1.0.0
+**Document Version**: 1.2
+**For**: Digantara Instrumentation Control Suite v1.2.0

@@ -1945,7 +1945,9 @@ class GradioElectronicLoadGUI:
                 )
 
                 print("\n" + "=" * 80)
+                hostname = socket.gethostname()
                 print(f"Electronic Load GUI is running on port {current_port}")
+                print(f"Network access from other PCs: http://{hostname}:{current_port}")
                 print("To stop the application, press Ctrl+C in this terminal.")
                 print("=" * 80)
                 return
@@ -1985,8 +1987,10 @@ def main():
                     s.bind(('', port))
                     s.close()
 
+                hostname = socket.gethostname()
                 print(f"\nFound available port: {port}")
                 print("The browser will open automatically when ready.")
+                print(f"Network access from other PCs: http://{hostname}:{port}")
                 print("")
                 print("IMPORTANT: To stop the application, press Ctrl+C in this terminal.")
                 print("Closing the browser tab will NOT stop the server.")

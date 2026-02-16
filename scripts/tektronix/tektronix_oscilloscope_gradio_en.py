@@ -2693,8 +2693,10 @@ class GradioMSO24GUI:
 
                 # STEP 4: Success! Server is running
                 print("\n" + "=" * 80)
+                hostname = socket.gethostname()
                 print(f"MSO24 Control Server is running on port {current_port}")
-                print("Access the interface at: http://localhost:{current_port}")
+                print(f"Local access:   http://localhost:{current_port}")
+                print(f"Network access: http://{hostname}:{current_port}")
                 print("To stop the application, press Ctrl+C in this terminal.")
                 print("=" * 80)
                 return  # Exit method, server continues running
@@ -2803,8 +2805,10 @@ def main():
                     s.close()           # Port is free! Close the test socket
 
                 # SUCCESS! Found available port
+                hostname = socket.gethostname()
                 print(f"\nFound available port: {port}")
                 print("The browser will open automatically when ready.")
+                print(f"Network access from other PCs: http://{hostname}:{port}")
                 print("")
                 print("IMPORTANT: To stop the application, press Ctrl+C in this terminal.")
                 print("Closing the browser tab will NOT stop the server.")

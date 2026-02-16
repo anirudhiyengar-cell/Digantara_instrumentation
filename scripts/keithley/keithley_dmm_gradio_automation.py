@@ -34,6 +34,7 @@ from typing import Optional, Dict, Any, List, Tuple
 import io
 import base64
 from pathlib import Path
+import socket
 
 # Import the DMM control classes from instrument_control package
 import sys
@@ -717,6 +718,8 @@ def create_dmm_interface():
 
 if __name__ == "__main__":
     # Create and launch the interface
+    hostname = socket.gethostname()
+    print(f"Network access from other PCs: http://{hostname}:7862")
     interface = create_dmm_interface()
     interface.launch(
         server_name="0.0.0.0",

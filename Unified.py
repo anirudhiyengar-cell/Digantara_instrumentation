@@ -7522,8 +7522,10 @@ def main():
                     s.bind(('', port))
                     s.close()
                 
+                hostname = socket.gethostname()
                 print(f"Found available port: {port}")
                 print("The browser will open automatically when ready.")
+                print(f"Network access from other PCs: http://{hostname}:{port}")
                 print("IMPORTANT: To stop the application, press Ctrl+C in this terminal.")
                 
                 app = UnifiedInstrumentControl()

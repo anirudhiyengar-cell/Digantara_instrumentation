@@ -11,7 +11,7 @@
 ### What You Need
 
 - [ ] A computer with Windows, Mac, or Linux
-- [ ] One of the supported instruments (Power Supply, DMM, or Oscilloscope)
+- [ ] One of the supported instruments (Power Supply, DMM, Electronic Load, or Oscilloscope)
 - [ ] A USB cable to connect instrument to computer
 - [ ] Internet connection (for initial setup only)
 
@@ -399,7 +399,7 @@ Print this checklist and keep it at your workstation:
 
 ### Contact Support
 
-**Email**: info@digantara.com
+**Email**: anirudh.iyengar@digantara.co.in
 **Subject Line**: "Instrumentation Software Help - [Your Issue]"
 
 **Include in your email**:
@@ -464,5 +464,5 @@ You're now ready to use the Digantara Instrumentation Control Suite!
 
 ---
 
-**Document Version**: 1.0
-**For**: Digantara Instrumentation Control Suite v1.0.0
+**Document Version**: 1.2
+**For**: Digantara Instrumentation Control Suite v1.2.0

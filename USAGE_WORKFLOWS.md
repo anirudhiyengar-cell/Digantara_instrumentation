@@ -918,7 +918,7 @@ IF STILL NOT WORKING
   │     └─ Isolates whether computer or instrument
   │
   ├─→ Contact support
-  │     ├─ Email: info@digantara.com
+  │     ├─ Email: anirudh.iyengar@digantara.co.in
   │     └─ Include:
   │         ├─ Exact error message
   │         ├─ OS and version
@@ -969,5 +969,5 @@ IF STILL NOT WORKING
 
 ---
 
-**Document Version**: 1.0
-**For**: Digantara Instrumentation Control Suite v1.0.0
+**Document Version**: 1.2
+**For**: Digantara Instrumentation Control Suite v1.2.0

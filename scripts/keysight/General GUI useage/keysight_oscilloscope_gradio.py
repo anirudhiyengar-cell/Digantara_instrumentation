@@ -1214,7 +1214,9 @@ class GradioOscilloscopeGUI:
                 
                 # If we get here, launch was successful
                 print("\n" + "=" * 80)
+                hostname = socket.gethostname()
                 print(f"Server is running on port {current_port}")
+                print(f"Network access from other PCs: http://{hostname}:{current_port}")
                 print("To stop the application, press Ctrl+C in this terminal.")
                 print("=" * 80)
                 return
@@ -1271,8 +1273,10 @@ def main():
                     s.close()
                     
                     # If we get here, the port is available
+                    hostname = socket.gethostname()
                     print(f"\nFound available port: {port}")
                     print("The browser will open automatically when ready.")
+                    print(f"Network access from other PCs: http://{hostname}:{port}")
                     print("")
                     print("IMPORTANT: To stop the application, press Ctrl+C in this terminal.")
                     print("Closing the browser tab will NOT stop the server.")

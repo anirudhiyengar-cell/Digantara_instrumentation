@@ -16,11 +16,12 @@ A comprehensive web-based automation framework providing unified control of prec
 ## Recent Updates
 
 **Latest Version Features:**
+- **Keysight DMM & PSU Support**: Added drivers and GUIs for Keysight digital multimeters and power supplies
+- **Keysight HD304MSO Oscilloscope Support**: Added driver for Keysight InfiniiVision HD3 series (14-bit ADC, mixed signal)
 - **Automatic VISA Instrument Detection**: Integrated auto-discovery system for connected instruments with intelligent classification and one-click connection
 - **Tektronix MSO24 Oscilloscope Support**: Full integration with Tektronix MSO24 series oscilloscopes
 - **Continuous Trigger Capture**: Automated long-term oscilloscope trigger event monitoring
 - **Individual Functionality Modules**: Specialized modules for specific measurement tasks
-- **Enhanced Documentation**: Added INSTALLATION.md, QUICK_START.md, USAGE_WORKFLOWS.md, AUTO_DETECTION_GUIDE.md, and DOCUMENTATION_INDEX.md
 - **Reorganized File Structure**: Improved organization of scripts with categorized subdirectories
 - **SciPy Integration**: Added scientific computing capabilities for advanced analysis
 
@@ -70,9 +71,13 @@ The Digantara Instrumentation Control Suite eliminates the complexity of laborat
 | Category | Model | Capabilities | Interface |
 |----------|-------|--------------|-----------|
 | **Power Supply** | Keithley 2230-30-1 | 3-channel programmable DC PSU<br>30V/3A per channel<br>Waveform generation (Sine, Square, Triangle, Ramp) | USB/VISA |
+| **Power Supply** | Keysight (via GUI) | Keysight PSU control through dedicated Gradio interface | USB/LAN/VISA |
 | **Digital Multimeter** | Keithley DMM6500<br>Keithley DMM7510 | 6.5/7.5-digit precision DMM<br>DC/AC V/I, 2W/4W resistance<br>Capacitance, frequency, temperature | USB/LAN/VISA |
+| **Digital Multimeter** | Keysight (via GUI) | Keysight DMM control through dedicated Gradio interface | USB/LAN/VISA |
 | **Electronic Load** | Keithley 2380 Series | Programmable DC electronic load<br>CC/CV/CR/CP operation modes<br>120W/240W power ratings<br>Battery discharge testing | USB/GPIB/VISA |
-| **Oscilloscope** | Keysight DSOX6004A<br>Tektronix MSO24 | Keysight: 4-channel mixed signal scope, 1 GHz bandwidth, 20 GSa/s<br>Tektronix: MSO24 series with advanced triggering and analysis | USB/LAN/VISA |
+| **Oscilloscope** | Keysight DSOX6004A | 4-channel mixed signal scope, 1 GHz bandwidth, 20 GSa/s | USB/LAN/VISA |
+| **Oscilloscope** | Keysight HD304MSO | 4-channel, 14-bit ADC, 200 MHz-1 GHz, 16 digital channels | USB/LAN/VISA |
+| **Oscilloscope** | Tektronix MSO24 | MSO24 series with advanced triggering and analysis | USB/LAN/VISA |
 
 ### Measurement Specifications
 
@@ -105,10 +110,19 @@ The Digantara Instrumentation Control Suite eliminates the complexity of laborat
 - **Triggering**: Edge, pulse width, pattern, serial bus
 - **Analysis**: FFT, math functions, automated measurements
 
+#### Keysight Oscilloscope (HD304MSO)
+- **Channels**: 4 analog + 16 digital channels
+- **Bandwidth**: 200 MHz (upgradeable to 1 GHz)
+- **Sample Rate**: 2.5 GSa/s
+- **Memory Depth**: 100 Mpts per channel
+- **Resolution**: 14-bit ADC
+- **Features**: Mixed signal capability, dual frequency counters, 1.3M wfm/s update rate
+
 #### Tektronix Oscilloscope (MSO24)
 - **Channels**: 4 analog + 16 digital channels
 - **Bandwidth**: Up to 200 MHz - 2 GHz (model dependent)
-- **Sample Rate**: Up to 50 GSa/s
+- **Sample Rate**: Up to 2.5 GSa/s
+- **Memory Depth**: 62.5 Mpts
 - **Features**: Advanced triggering, waveform capture, screenshot capability
 - **Analysis**: Comprehensive measurement suite, math functions
 
@@ -238,6 +252,16 @@ Electronic Load:
 python scripts\keithley\keithley_load_gradio_gui.py
 ```
 
+Keysight DMM:
+```bash
+python "scripts\keysight\General GUI useage\keysight_dmm_gradio_gui.py"
+```
+
+Keysight PSU:
+```bash
+python "scripts\keysight\General GUI useage\keysight_psu_gradio_gui.py"
+```
+
 Oscilloscope (Keysight):
 ```bash
 python "scripts\keysight\General GUI useage\keysight_oscilloscope_gradio_en.py"
@@ -253,12 +277,12 @@ python scripts\tektronix\tektronix_oscilloscope_gradio_en.py
 After launching, you'll see console output similar to:
 ```
 Running on local URL:  http://127.0.0.1:7860
-Running on network:   http://192.168.128.175:7860
+Network access from other PCs: http://YOUR-PC-NAME:7860
 ```
 
 Open your browser and navigate to:
 - **Local access**: http://localhost:7860
-- **Network access**: http://[displayed-IP]:7860
+- **Network access**: Use the hostname URL shown in the console (e.g., `http://YOUR-PC-NAME:7860`)
 
 The instrument control interface will appear in your browser.
 
@@ -703,7 +727,7 @@ The Keysight DSOX6004A interface provides waveform capture, analysis, and screen
 
 **Option B: Manual Entry**
 - **USB Connection**: Enter VISA address (`USB0::0x0957::...::INSTR`)
-- **LAN Connection**: Enter IP address (e.g., `192.168.128.175`)
+- **LAN Connection**: Enter instrument IP address (e.g., `192.168.x.x`)
 - Click **"Connect"**
 
 Instrument ID displays upon successful connection
@@ -893,10 +917,11 @@ The Digantara Instrumentation Control Suite follows a layered architecture patte
        │          │          │           │
 ┌──────▼──────────▼──────────▼───────────▼──────────────────┐
 │            Instrument Driver Layer (Python Classes)        │
-│  ┌──────────┬──────────┬──────────┬──────────┬─────────┐  │
-│  │Keithley  │Keithley  │Keithley  │Keysight  │Tektronix│  │
-│  │DMM Class │PSU Class │Load Class│Osc Class │Osc Class│  │
-│  └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬────┘  │
+│  ┌──────────┬──────────┬──────────┬──────────┬──────────┬─────────┐│
+│  │Keithley  │Keithley  │Keithley  │Keysight  │Keysight  │Tektronix││
+│  │DMM/PSU/  │Load Class│DMM/PSU   │DSOX6004A │HD304MSO  │MSO24    ││
+│  │Classes   │          │Classes   │Class     │Class     │Class    ││
+│  └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬───┘│
 └───────┼──────────┼──────────┼──────────┼──────────┼───────┘
         │          │          │          │          │
 ┌─────────▼──────────────▼────────────────────▼──────────────┐
@@ -915,8 +940,8 @@ The Digantara Instrumentation Control Suite follows a layered architecture patte
 └──────────────────────┬──────────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────────┐
-│                Physical Instruments                         │
-│ (Keithley PSU, DMM, Load, Keysight/Tektronix Oscilloscopes)│
+│                Physical Instruments                                │
+│ (Keithley PSU/DMM/Load, Keysight DMM/PSU/Oscilloscopes, Tektronix)│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -979,11 +1004,13 @@ Digantara_instrumentation/
 │
 ├── instrument_control/                 # Core instrument driver library
 │   ├── __init__.py                     # Package initialization & auto-detection exports
-│   ├── keithley_dmm.py                 # DMM6500/7510 driver
-│   ├── keithley_power_supply.py        # 2230-30-1 PSU driver
-│   ├── keithley_load.py                # 2380 series electronic load driver
-│   ├── keysight_oscilloscope.py        # DSOX6004A oscilloscope driver
-│   ├── tektronix_oscilloscope.py       # MSO24 oscilloscope driver
+│   ├── keithley_dmm.py                 # Keithley DMM6500/7510 driver
+│   ├── keithley_power_supply.py        # Keithley 2230-30-1 PSU driver
+│   ├── keithley_load.py                # Keithley 2380 series electronic load driver
+│   ├── keysight_dmm.py                 # Keysight DMM driver
+│   ├── keysight_psu.py                 # Keysight PSU driver
+│   ├── keysight_oscilloscope.py        # Keysight DSOX6004A & HD304MSO oscilloscope driver
+│   ├── tektronix_oscilloscope.py       # Tektronix MSO24 oscilloscope driver
 │   └── scpi_wrapper.py                 # Base SCPI class + auto-detection utilities
 │
 ├── scripts/                            # Individual instrument GUIs
@@ -994,9 +1021,11 @@ Digantara_instrumentation/
 │   │   └── keithley_power_supply_automation.py   # Legacy PSU interface
 │   ├── keysight/
 │   │   ├── General GUI useage/                   # General purpose interfaces
-│   │   │   ├── keysight_oscilloscope_gradio_en.py      # Enhanced GUI
-│   │   │   ├── keysight_oscilloscope_gradio.py         # Basic GUI
-│   │   │   ├── keysight_oscilloscope_main.py           # Main interface
+│   │   │   ├── keysight_dmm_gradio_gui.py              # Keysight DMM GUI
+│   │   │   ├── keysight_psu_gradio_gui.py              # Keysight PSU GUI
+│   │   │   ├── keysight_oscilloscope_gradio_en.py      # Enhanced oscilloscope GUI
+│   │   │   ├── keysight_oscilloscope_gradio.py         # Basic oscilloscope GUI
+│   │   │   ├── keysight_oscilloscope_main.py           # Main oscilloscope interface
 │   │   │   └── keysight_oscilloscope_main_with_livefeed.py  # Live waveform
 │   │   └── Ind Functionality/                    # Individual functionality modules
 │   │       └── continuous_trigger_capture.py     # Continuous trigger capture
@@ -1005,18 +1034,17 @@ Digantara_instrumentation/
 │
 ├── config/                             # Configuration files and settings
 ├── trigger_captures/                   # Trigger capture data storage
+├── voltage_ramp_data/                  # PSU waveform data storage
+├── outputs/                            # General output data storage
 │
 ├── requirements.txt                    # Python package dependencies
 ├── setup.py                            # Package installation configuration
 │
 ├── README.md                           # This file (main documentation)
-├── AUTO_DETECTION_GUIDE.md             # Automatic instrument detection guide
-├── test_auto_detection.py              # Auto-detection test script
 ├── INSTALLATION.md                     # Detailed installation guide
 ├── QUICK_START.md                      # Quick start tutorial
 ├── USAGE_WORKFLOWS.md                  # Common usage scenarios
-├── DOCUMENTATION_INDEX.md              # Documentation navigation
-└── Test_Equipment_Control_Work_Instructions.md  # Work instructions
+└── Test_Equipment_Control_Work_Instructions.pdf  # Work instructions (PDF)
 ```
 
 ---
@@ -1205,7 +1233,7 @@ OUTPUT_DIR = "/home/user/test_data"         # Linux/macOS
 4. **Verify network settings (for LAN connection):**
    ```bash
    # Ping instrument IP address:
-   ping 192.168.128.175
+   ping <INSTRUMENT_IP>
 
    # Should receive replies with low latency (<10ms)
    ```
@@ -1377,7 +1405,7 @@ USB Connection:
 USB0::0x05E6::0x2230::805224014806770001::INSTR
 
 LAN/Ethernet Connection:
-TCPIP0::192.168.128.175::inst0::INSTR
+TCPIP0::<INSTRUMENT_IP>::inst0::INSTR
 
 GPIB Connection (legacy):
 GPIB0::12::INSTR
@@ -1496,8 +1524,8 @@ WAVeform:DATA?
    - Allow connections on port 7860
 
 3. **Access from remote computer:**
-   - Browser: `http://[computer-IP]:7860`
-   - Example: `http://192.168.128.175:7860`
+   - Browser: `http://YOUR-PC-NAME:7860` (use the hostname shown in console)
+   - The hostname is auto-detected and printed when the server starts
 
 **Multiple Users:**
 
@@ -1591,13 +1619,9 @@ interface.launch(
 
 **Project Documentation:**
 
-- [AUTO_DETECTION_GUIDE.md](AUTO_DETECTION_GUIDE.md) - Comprehensive guide to automatic instrument detection
-- [scripts/keithley/LOAD_AUTO_DETECTION.md](scripts/keithley/LOAD_AUTO_DETECTION.md) - Electronic Load auto-detection guide
-- [test_auto_detection.py](test_auto_detection.py) - Test script for verifying auto-detection functionality
 - [INSTALLATION.md](INSTALLATION.md) - Detailed installation instructions
 - [QUICK_START.md](QUICK_START.md) - Quick start guide for first-time users
 - [USAGE_WORKFLOWS.md](USAGE_WORKFLOWS.md) - Common workflow examples
-- [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) - Complete documentation index
 
 ### Getting Help
 
@@ -1670,8 +1694,8 @@ Suggestions for improvements are welcome! Contact the development team with:
 ## License and Credits
 
 **Project**: Digantara Instrumentation Control Suite
-**Version**: 1.1.0
-**Release Date**: 2025-12-23
+**Version**: 1.2.0
+**Release Date**: 2026-02-11
 **Status**: Production Ready
 
 **Lead Developer**: Anirudh Iyengar
@@ -1751,7 +1775,7 @@ Special thanks to:
 
 ---
 
-**Document Version**: 1.1
-**For Software Version**: 1.1.0
+**Document Version**: 1.2
+**For Software Version**: 1.2.0
 
 For the latest documentation and updates, contact Digantara Research and Technologies.

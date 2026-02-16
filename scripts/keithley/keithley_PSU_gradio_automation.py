@@ -52,6 +52,7 @@ from typing import Optional, Tuple, Dict, List  # Helps define what type of data
 import math             # Mathematical functions (sine, cosine, etc.) for waveform generation
 import os               # Operating system interface for file and directory operations
 import csv              # Tools for reading and writing CSV (spreadsheet) files
+import socket           # For hostname detection
 from pathlib import Path  # Modern way to handle file system paths
 import gradio as gr     # Web interface framework that creates the user interface
 
@@ -1313,8 +1314,9 @@ def main():
 
         # Use network binding so other laptops on the same WiFi can access
         chosen_port = 7861
-        print(f"Opening browser to http://0.0.0.0:{chosen_port}")
-        print("Other laptops on the same WiFi can open: http://[your-computer-ip]:7861")
+        hostname = socket.gethostname()
+        print(f"Opening browser to http://localhost:{chosen_port}")
+        print(f"Other laptops on the same WiFi can open: http://{hostname}:{chosen_port}")
 
         try:
             demo.launch(

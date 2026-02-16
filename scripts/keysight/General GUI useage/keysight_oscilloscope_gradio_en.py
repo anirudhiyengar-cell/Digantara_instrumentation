@@ -3597,9 +3597,11 @@ class GradioOscilloscopeGUI:
 
                 )
 
+                hostname = socket.gethostname()
                 print("\n" + "=" * 80)
 
                 print(f"Server is running on port {current_port}")
+                print(f"Network access from other PCs: http://{hostname}:{current_port}")
 
                 print("To stop the application, press Ctrl+C in this terminal.")
 
@@ -3667,9 +3669,11 @@ def main():
 
                     s.close()
 
+                hostname = socket.gethostname()
                 print(f"\nFound available port: {port}")
 
                 print("The browser will open automatically when ready.")
+                print(f"Network access from other PCs: http://{hostname}:{port}")
 
                 print("")
 
