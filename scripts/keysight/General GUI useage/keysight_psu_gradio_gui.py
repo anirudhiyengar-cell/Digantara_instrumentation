@@ -1678,7 +1678,7 @@ class GradioPSUGUI:
                 with gr.Row():
                     visa_address = gr.Textbox(
                         label="VISA Address",
-                        value="USB0::0x2A8D::0x0201::MY12345::INSTR",
+                        value="USB0::0x2A8D::0xCC04::CN65240123::INSTR",
                         scale=3
                     )
                     connect_btn = gr.Button("Connect", variant="primary", scale=1)
