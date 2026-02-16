@@ -9,25 +9,25 @@
 # For development with additional testing and documentation tools:
 #   pip install -r requirements-dev.txt  # (if you create this later)
 
-# Core dependencies
-numpy>=2.0.0,<3.0.0      # Numerical computing
-pandas>=2.2.0,<3.0.0     # Data manipulation and analysis
-matplotlib>=3.8.0,<4.0.0 # Plotting and visualization
-Pillow>=10.0.0,<11.0.0   # Image processing
+# Core dependencies (pinned to tested working versions)
+numpy==2.3.5              # Numerical computing
+pandas==2.3.3             # Data manipulation and analysis
+matplotlib==3.10.7        # Plotting and visualization
+Pillow==10.4.0            # Image processing
 
 # Hardware communication
-pyvisa>=1.13.0,<2.0.0    # VISA instrument control
+pyvisa==1.15.0            # VISA instrument control
 pyvisa-py>=0.7.2,<1.0.0  # Pure Python VISA backend
 pyserial>=3.5,<4.0.0     # Serial port communication
 pyusb>=1.2.1,<2.0.0      # USB device access
 
 # Web interface
-gradio>=4.0.0,<5.0.0     # Web UI components
+gradio==4.44.1            # Web UI components (exact version to avoid ASGI errors)
 huggingface_hub>=0.25.2,<1.0.0  # Model and dataset hosting
 
 # Build and packaging (included for development environments)
 setuptools>=68.0.0
 wheel>=0.40.0
 # Scientific computing (for cross-correlation and statistics)
-scipy>=1.10.0
+scipy==1.16.3
 # Note: pip should be managed by the Python environment, not requirements.txt
