@@ -1576,9 +1576,6 @@ class GradioPSUGUI:
     def create_interface(self):
         """Build comprehensive Gradio web interface with full-page layout"""
 
-        # Get the path to assets folder (same level as Unified.py)
-        assets_path = Path(__file__).resolve().parent.parent.parent.parent / "assets" / "digantara_logo.png"
-
         # CSS styling matching Unified.py
         css = """
         /* Main container - full width interface */
@@ -1669,22 +1666,11 @@ class GradioPSUGUI:
         ) as interface:
 
             # ================================================================
-            # HEADER WITH LOGO
+            # HEADER
             # ================================================================
-            with gr.Row():
-                with gr.Column(scale=1):
-                    gr.Image(
-                        str(assets_path),
-                        show_label=False,
-                        container=False,
-                        height=80,
-                        width=550
-                    )
-
-                with gr.Column(scale=5):
-                    gr.Markdown("# DIGANTARA Keysight E36441A Power Supply Control")
-                    gr.Markdown("**Developed by: Anirudh Iyengar** | Digantara Research and Technologies Pvt. Ltd.")
-                    gr.Markdown("Professional 4-channel autoranging DC power supply automation interface with waveform generation")
+            gr.Markdown("# DIGANTARA Keysight E36441A Power Supply Control")
+            gr.Markdown("**Developed by: Anirudh Iyengar** | Digantara Research and Technologies Pvt. Ltd.")
+            gr.Markdown("Professional 4-channel autoranging DC power supply automation interface with waveform generation")
 
             # ================================================================
             # CONNECTION TAB

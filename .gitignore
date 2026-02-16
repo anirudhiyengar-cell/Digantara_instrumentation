@@ -33,7 +33,7 @@ ENV/
 .DS_Store
 
 # Assets (logos, images, etc.)
-assets/
+
 
 #claude
 .claude/
