@@ -1576,6 +1576,9 @@ class GradioPSUGUI:
     def create_interface(self):
         """Build comprehensive Gradio web interface with full-page layout"""
 
+        # Get the path to assets folder (same level as Unified.py)
+        assets_path = Path(__file__).resolve().parent.parent.parent.parent / "assets" / "digantara_logo.png"
+
         # CSS styling matching Unified.py
         css = """
         /* Main container - full width interface */
@@ -1671,7 +1674,7 @@ class GradioPSUGUI:
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Image(
-                        "assets/digantara_logo.png",
+                        str(assets_path),
                         show_label=False,
                         container=False,
                         height=80,
