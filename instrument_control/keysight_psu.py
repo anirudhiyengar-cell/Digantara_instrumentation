@@ -610,27 +610,25 @@ class KeysightE36441A:
 
     def measure_power(self, channel: ChannelType) -> Optional[float]:
         """
-        Measure actual output power for specified channel.
-        
+        Calculate output power for specified channel from voltage and current measurements.
+
         Args:
             channel: Channel number (1-4)
-            
+
         Returns:
-            Measured power in watts or None if measurement failed
-            
-        SCPI Command Reference:
-            MEASure:SCALar:POWer? (@<ch_list>) (Page 63)
+            Calculated power in watts (V * I) or None if measurement failed
         """
         try:
             ch = self._validate_channel(channel)
-            response = self._scpi_wrapper.query(f"MEASure:SCALar:POWer? (@{ch})")
-            
-            if response is not None:
-                power = float(response.strip())
-                self._logger.debug(f"Channel {ch} measured power: {power:.6f}W")
+            voltage = self.measure_voltage(ch)
+            current = self.measure_current(ch)
+
+            if voltage is not None and current is not None:
+                power = voltage * current
+                self._logger.debug(f"Channel {ch} calculated power: {power:.6f}W")
                 return power
             return None
-            
+
         except Exception as e:
             self._logger.error(f"Error measuring power for channel {channel}: {e}")
             return None

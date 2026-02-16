@@ -118,19 +118,21 @@ class SCPIWrapper:
         """Check if instrument is currently connected"""
         return self._is_connected and self._instrument is not None
 
-    def write(self, command: str) -> None:
+    def write(self, command: str) -> bool:
         """
         Send SCPI command to instrument
-        
-        ✅ ENHANCED: Better error handling and logging
+
+        Returns:
+            True if command sent successfully, False otherwise
         """
         if not self.is_connected:
             raise ConnectionError("Instrument not connected")
-            
+
         try:
             self._logger.debug(f"WRITE: {command}")
             self._instrument.write(command)
-            
+            return True
+
         except pyvisa.errors.VisaIOError as e:
             self._logger.error(f"VISA error writing command '{command}': {e}")
             raise
