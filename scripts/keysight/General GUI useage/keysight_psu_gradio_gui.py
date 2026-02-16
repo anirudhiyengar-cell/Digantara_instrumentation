@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Keysight E36441A Four Output Programmable DC Power Supply Control - Professional Gradio Interface
 
@@ -2092,7 +2090,7 @@ class GradioPSUGUI:
                         lines=2
                     )
 
-                    wf_preview_plot = gr.Plot(label="Multi-Channel Waveform Preview")
+                    # wf_preview_plot = gr.Plot(label="Multi-Channel Waveform Preview")  # Disabled due to schema generation issues
 
                     # Preview function
                     def preview_waveforms(
@@ -2225,16 +2223,16 @@ class GradioPSUGUI:
                         return self.start_multi_channel_waveform(channel_configs)
 
                     # Wire up buttons
-                    wf_preview_btn.click(
-                        fn=preview_waveforms,
-                        inputs=[
-                            wf_ch1_enable, wf_ch1_waveform, wf_ch1_voltage, wf_ch1_cycles, wf_ch1_points, wf_ch1_duration,
-                            wf_ch2_enable, wf_ch2_waveform, wf_ch2_voltage, wf_ch2_cycles, wf_ch2_points, wf_ch2_duration,
-                            wf_ch3_enable, wf_ch3_waveform, wf_ch3_voltage, wf_ch3_cycles, wf_ch3_points, wf_ch3_duration,
-                            wf_ch4_enable, wf_ch4_waveform, wf_ch4_voltage, wf_ch4_cycles, wf_ch4_points, wf_ch4_duration
-                        ],
-                        outputs=[wf_preview_plot]
-                    )
+                    # wf_preview_btn.click(
+                    #     fn=preview_waveforms,
+                    #     inputs=[
+                    #         wf_ch1_enable, wf_ch1_waveform, wf_ch1_voltage, wf_ch1_cycles, wf_ch1_points, wf_ch1_duration,
+                    #         wf_ch2_enable, wf_ch2_waveform, wf_ch2_voltage, wf_ch2_cycles, wf_ch2_points, wf_ch2_duration,
+                    #         wf_ch3_enable, wf_ch3_waveform, wf_ch3_voltage, wf_ch3_cycles, wf_ch3_points, wf_ch3_duration,
+                    #         wf_ch4_enable, wf_ch4_waveform, wf_ch4_voltage, wf_ch4_cycles, wf_ch4_points, wf_ch4_duration
+                    #     ],
+                    #     outputs=[wf_preview_plot]
+                    # )
 
                     wf_start_btn.click(
                         fn=start_waveform,
@@ -2527,7 +2525,8 @@ class GradioPSUGUI:
                     server_port=current_port,
                     prevent_thread_lock=False,
                     show_error=True,
-                    quiet=False
+                    quiet=False,
+                    show_api=False
                 )
 
                 print("\n" + "=" * 80)
