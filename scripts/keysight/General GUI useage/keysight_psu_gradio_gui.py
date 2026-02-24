@@ -46,6 +46,7 @@ PSU_WAVEFORM_PATH = r"C:\Users\AnirudhIyengar\Desktop\psu_waveforms"
 # END OF CONFIGURATION - DO NOT EDIT BELOW THIS LINE
 # =============================================================================
 
+import errno
 import sys
 import logging
 import threading
@@ -59,6 +60,29 @@ import atexit
 import os
 import socket
 import math
+
+# monkey-patch gradio_client to gracefully handle boolean JSON schemas
+# (some typing constructs produce additionalProperties: False/True which is a bool)
+import gradio_client.utils as _gc_utils
+_orig_json_to_py = _gc_utils._json_schema_to_python_type
+_orig_get_type = _gc_utils.get_type
+
+def _json_schema_to_python_type_safe(schema, defs=None):
+    # return a generic type when schema is a bare bool
+    if isinstance(schema, bool):
+        return "Any"  # fallback when additionalProperties is True/False
+    return _orig_json_to_py(schema, defs)
+
+# also patch get_type to avoid iterating over bool
+
+def get_type_safe(schema):
+    if isinstance(schema, bool):
+        # represent boolean schema as "boolean" so outer code handles it
+        return "boolean"
+    return _orig_get_type(schema)
+
+_gc_utils._json_schema_to_python_type = _json_schema_to_python_type_safe
+
 import gradio as gr
 import pandas as pd
 import matplotlib
@@ -439,7 +463,7 @@ class PSUDataLogger:
         if measurements:
             self._save_logged_data(measurements)
 
-    def _save_logged_data(self, measurements: List[Dict]) -> Optional[str]:
+    def _save_logged_data(self, measurements: List[Dict[str, Any]]) -> Optional[str]:
         """Save logged measurement data to CSV file"""
         try:
             save_dir = Path(PSU_CSV_DATA_PATH)
@@ -458,7 +482,7 @@ class PSUDataLogger:
             self._logger.error(f"Failed to save logged data: {e}")
             return None
 
-    def export_single_measurement(self, measurements: Dict[int, Dict], custom_path: Optional[str] = None) -> Optional[str]:
+    def export_single_measurement(self, measurements: Dict[int, Dict[str, Any]], custom_path: Optional[str] = None) -> Optional[str]:
         """Export single measurement to CSV"""
         if not measurements:
             return None
@@ -499,7 +523,7 @@ class PSUDataLogger:
             self._logger.error(f"Export failed: {e}")
             return None
 
-    def generate_measurement_plot(self, measurements: Dict[int, Dict], custom_path: Optional[str] = None) -> Optional[str]:
+    def generate_measurement_plot(self, measurements: Dict[int, Dict[str, Any]], custom_path: Optional[str] = None) -> Optional[str]:
         """Generate measurement visualization"""
         if not measurements:
             return None
@@ -1231,7 +1255,7 @@ class GradioPSUGUI:
     # MULTI-CHANNEL WAVEFORM GENERATION
     # ========================================================================
 
-    def execute_multi_channel_waveform(self, channel_configs: List[Dict]) -> None:
+    def execute_multi_channel_waveform(self, channel_configs: List[Dict[str, Any]]) -> None:
         """
         Execute simultaneous waveform generation on multiple PSU channels.
 
@@ -1443,7 +1467,7 @@ class GradioPSUGUI:
         finally:
             self.waveform_active = False
 
-    def start_multi_channel_waveform(self, channel_configs: List[Dict]) -> str:
+    def start_multi_channel_waveform(self, channel_configs: List[Dict[str, Any]]) -> str:
         """Start multi-channel waveform execution in a background thread."""
         if self.waveform_active:
             return "ERROR: Waveform already running. Stop current waveform first."
@@ -2587,7 +2611,11 @@ def main():
                 break
 
             except OSError as e:
-                if "address already in use" in str(e).lower():
+                msg = str(e).lower()
+                # on Windows errno 10048 corresponds to EADDRINUSE
+                if ("address already in use" in msg
+                        or e.errno == errno.EADDRINUSE
+                        or getattr(e, 'winerror', None) == 10048):
                     print(f"Port {port} is in use, trying next port...")
                     if port == start_port + max_attempts - 1:
                         print(f"\nError: Could not find an available port after {max_attempts} attempts.")

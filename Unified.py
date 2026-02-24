@@ -3207,7 +3207,7 @@ class PowerSupplyAutomationGradio:
     # Multi-Channel Simultaneous Waveform Execution
     # ════════════════════════════════════════════════════════════════════════════
 
-    def execute_multi_channel_waveform(self, channel_configs: List[Dict]) -> None:
+    def execute_multi_channel_waveform(self, channel_configs: List[Dict[str, Any]]) -> None:
         """
         Execute simultaneous waveform generation on multiple PSU channels.
 
@@ -3483,7 +3483,7 @@ class PowerSupplyAutomationGradio:
         finally:
             self.ramping_active = False
 
-    def start_multi_channel_waveform(self, channel_configs: List[Dict]) -> str:
+    def start_multi_channel_waveform(self, channel_configs: List[Dict[str, Any]]) -> str:
         """
         Start multi-channel waveform execution in a background thread.
 
