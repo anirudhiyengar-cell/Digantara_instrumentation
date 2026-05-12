@@ -389,27 +389,28 @@ class PSUDataLogger:
         self._logging_active = False
         self._logging_thread = None
         self._stop_logging = threading.Event()
+        self.last_logged_measurements = []  # Store most recent logged data
 
-    def start_measurement_logging(self, interval_seconds: float = 1.0, duration_seconds: Optional[float] = None) -> bool:
-        """Start continuous measurement logging"""
+    def start_measurement_logging(self, interval_seconds: float = 1.0, duration_seconds: Optional[float] = None, selected_channels: Optional[List[int]] = None) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Start continuous measurement logging with optional channel filtering"""
         if self._logging_active:
             self._logger.warning("Logging already active")
-            return False
+            return False, []
 
         try:
             self._stop_logging.clear()
             self._logging_thread = threading.Thread(
                 target=self._logging_worker,
-                args=(interval_seconds, duration_seconds),
+                args=(interval_seconds, duration_seconds, selected_channels),
                 daemon=True
             )
             self._logging_active = True
             self._logging_thread.start()
-            self._logger.info(f"Started measurement logging: interval={interval_seconds}s")
-            return True
+            self._logger.info(f"Started measurement logging: interval={interval_seconds}s, channels={selected_channels}")
+            return True, []
         except Exception as e:
             self._logger.error(f"Failed to start logging: {e}")
-            return False
+            return False, []
 
     def stop_measurement_logging(self) -> bool:
         """Stop continuous measurement logging"""
@@ -427,8 +428,8 @@ class PSUDataLogger:
             self._logger.error(f"Error stopping logging: {e}")
             return False
 
-    def _logging_worker(self, interval: float, duration: Optional[float]):
-        """Worker thread for continuous measurement logging"""
+    def _logging_worker(self, interval: float, duration: Optional[float], selected_channels: Optional[List[int]] = None):
+        """Worker thread for continuous measurement logging with channel filtering"""
         start_time = time.time()
         measurements = []
 
@@ -446,22 +447,25 @@ class PSUDataLogger:
                 if data:
                     timestamp = datetime.now()
                     for ch, ch_data in data.items():
-                        measurements.append({
-                            'timestamp': timestamp.isoformat(),
-                            'channel': ch,
-                            'voltage': ch_data['voltage'],
-                            'current': ch_data['current'],
-                            'power': ch_data['power']
-                        })
+                        # Filter by selected channels if provided, otherwise log all
+                        if selected_channels is None or ch in selected_channels:
+                            measurements.append({
+                                'timestamp': timestamp.isoformat(),
+                                'channel': ch,
+                                'voltage': ch_data['voltage'],
+                                'current': ch_data['current'],
+                                'power': ch_data['power']
+                            })
 
                 time.sleep(interval)
 
             except Exception as e:
                 self._logger.error(f"Error in logging worker: {e}")
 
-        # Save measurements to file
+        # Save measurements to file and store in instance
         if measurements:
             self._save_logged_data(measurements)
+            self.last_logged_measurements = measurements  # Store for later access
 
     def _save_logged_data(self, measurements: List[Dict[str, Any]]) -> Optional[str]:
         """Save logged measurement data to CSV file"""
@@ -612,6 +616,7 @@ class GradioPSUGUI:
         self.psu = None
         self.data_logger = None
         self.last_measurements = None
+        self.logged_measurements = []  # Store data from continuous logging
         self.io_lock = threading.RLock()
         self._shutdown_flag = threading.Event()
         self._gradio_interface = None
@@ -1037,18 +1042,28 @@ class GradioPSUGUI:
     # DATA LOGGING
     # ========================================================================
 
-    def start_continuous_logging(self, interval, duration):
-        """Start continuous measurement logging"""
+    def start_continuous_logging(self, interval, duration, selected_channels):
+        """Start continuous measurement logging with channel selection"""
         if not self.data_logger:
             return "Error: Data logger not initialized"
 
         try:
+            # Convert selected channels to list of integers
+            channel_list = None
+            if selected_channels:
+                try:
+                    channel_list = [int(ch) for ch in selected_channels]
+                except (ValueError, TypeError):
+                    return "Error: Invalid channel selection"
+
             duration_val = duration if duration > 0 else None
-            success = self.data_logger.start_measurement_logging(interval, duration_val)
+            success, measurements = self.data_logger.start_measurement_logging(interval, duration_val, channel_list)
 
             if success:
+                self.logged_measurements = measurements
                 duration_str = f"{duration}s" if duration_val else "indefinite"
-                return f"Continuous logging started: interval={interval}s, duration={duration_str}"
+                channels_str = f"(CH{', CH'.join(map(str, channel_list))})" if channel_list else "(All channels)"
+                return f"Continuous logging started: interval={interval}s, duration={duration_str} {channels_str}"
             else:
                 return "Failed to start logging"
         except Exception as e:
@@ -1219,21 +1234,56 @@ class GradioPSUGUI:
             return f"Error: {str(e)}", None
 
     def generate_plot(self):
-        """Generate measurement plot"""
-        if not self.last_measurements:
-            return "Error: No measurements available"
+        """Generate measurement plot from last measurements or logged data"""
+        # Try last_measurements first, then logged_measurements, then offer to load CSV
+        measurements_to_use = None
+        
+        if self.last_measurements:
+            measurements_to_use = self.last_measurements
+        elif self.logged_measurements:
+            # Convert logged measurements list to channel dict format
+            measurements_to_use = self._convert_logged_to_channel_format(self.logged_measurements)
+        elif self.data_logger and self.data_logger.last_logged_measurements:
+            measurements_to_use = self._convert_logged_to_channel_format(self.data_logger.last_logged_measurements)
+        
+        if not measurements_to_use:
+            return "Error: No measurements available. Run 'Measure All Channels' or 'Start Logging' first"
 
         if not self.data_logger:
             return "Error: Data logger not initialized"
 
         try:
-            filepath = self.data_logger.generate_measurement_plot(self.last_measurements)
+            filepath = self.data_logger.generate_measurement_plot(measurements_to_use)
             if filepath:
                 return f"Plot generated: {Path(filepath).name}"
             else:
                 return "Plot generation failed"
         except Exception as e:
             return f"Error: {str(e)}"
+
+    def _convert_logged_to_channel_format(self, logged_measurements: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+        """Convert logged measurements list to channel dictionary format for plotting"""
+        channel_measurements = {}
+        if not logged_measurements:
+            return channel_measurements
+        
+        # Get the most recent measurement for each channel
+        for measurement in logged_measurements:
+            ch = measurement.get('channel')
+            if ch not in channel_measurements:
+                channel_measurements[ch] = {
+                    'voltage': 0,
+                    'current': 0,
+                    'power': 0
+                }
+            # Keep the latest values
+            channel_measurements[ch] = {
+                'voltage': measurement.get('voltage', 0),
+                'current': measurement.get('current', 0),
+                'power': measurement.get('power', 0)
+            }
+        
+        return channel_measurements
 
     def safe_shutdown(self):
         """Execute safe shutdown sequence"""
@@ -2369,17 +2419,25 @@ class GradioPSUGUI:
                     outputs=[power_off_status]
                 )
 
-            # ================================================================
             # DATA LOGGING TAB
             # ================================================================
 
             with gr.Tab("Data Logging"):
                 gr.Markdown("### Continuous Data Logging")
-                gr.Markdown("Log measurements from all channels with configurable intervals")
+                gr.Markdown("Log measurements from selected channels with configurable intervals")
 
                 with gr.Row():
-                    log_interval = gr.Number(label="Interval (s)", value=1.0, minimum=0.1)
+                    log_interval = gr.Number(label="Interval (s)", value=1.0, minimum=0.001)
                     log_duration = gr.Number(label="Duration (s)", value=60, minimum=0, info="0 = indefinite")
+
+                with gr.Row():
+                    channel_selection = gr.CheckboxGroup(
+                        label="Select Channels to Log",
+                        choices=["1", "2", "3", "4"],
+                        value=["1", "2", "3", "4"],
+                        interactive=True,
+                        info="Leave empty to log all channels"
+                    )
 
                 with gr.Row():
                     start_logging_btn = gr.Button("Start Logging", variant="primary")
@@ -2389,7 +2447,7 @@ class GradioPSUGUI:
 
                 start_logging_btn.click(
                     fn=self.start_continuous_logging,
-                    inputs=[log_interval, log_duration],
+                    inputs=[log_interval, log_duration, channel_selection],
                     outputs=[logging_status]
                 )
 
@@ -2400,7 +2458,7 @@ class GradioPSUGUI:
                 )
 
                 gr.Markdown("### Data Export")
-                gr.Markdown("Export measurements and generate plots from last measurement")
+                gr.Markdown("Export measurements and generate plots from last measurement or logged data")
 
                 with gr.Row():
                     export_csv_btn = gr.Button("Export CSV", variant="secondary")
